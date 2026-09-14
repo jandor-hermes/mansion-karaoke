@@ -4208,7 +4208,8 @@
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
-    let sequence2 = 0;
+    let commandCursor = 0;
+    let eventSequence = 0;
     let timer = null;
     let onMessageInstalled = false;
     const poll = async () => {
@@ -4217,13 +4218,13 @@
         return;
       }
       try {
-        console.debug("[karaoke-player] polling controller", { baseUrl: activeConfig.baseUrl, after: sequence2 });
-        const result = await client.poll(sequence2);
+        console.debug("[karaoke-player] polling controller", { baseUrl: activeConfig.baseUrl, after: commandCursor });
+        const result = await client.poll(commandCursor);
         if (result.command) {
           await router.route(result.command, state);
           console.debug("[karaoke-player] command applied", { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
-          sequence2 = result.sequence;
-        } else sequence2 = Math.max(sequence2, result.sequence);
+          commandCursor = result.sequence;
+        } else commandCursor = Math.max(commandCursor, result.sequence);
       } catch (error) {
         console.error("[karaoke-player] controller poll failed", error);
       }
@@ -4246,10 +4247,10 @@
     };
     const onMessage = (rawMessage) => {
       if (!client) return;
-      const event = enrichContentEvent(rawMessage, state, sequence2, Date.now());
+      const event = enrichContentEvent(rawMessage, state, eventSequence, Date.now());
       if (event) {
         console.debug("[karaoke-player] content event received", event);
-        sequence2 = event.sequence;
+        eventSequence = event.sequence;
         void client.publish(event).then(() => console.debug("[karaoke-player] content event published", { type: event.type, sequence: event.sequence })).catch((error) => console.error("[karaoke-player] event publish failed", error));
       }
     };
