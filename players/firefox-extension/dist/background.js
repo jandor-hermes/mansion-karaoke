@@ -4098,6 +4098,7 @@
 
   // players/firefox-extension/src/index.ts
   var createInitialPlayerState = () => ({ tabId: null, status: "idle" });
+  var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
     constructor(tabs, sendMessage = async () => void 0) {
       this.tabs = tabs;
@@ -4105,6 +4106,7 @@
     }
     async route(input, state) {
       const command = playbackCommandSchema.parse(input);
+      debug("command received", { type: command.type, sequence: state.status, videoId: command.type === "play" ? command.videoId : state.videoId });
       if (command.type === "play") {
         const url = `https://www.youtube.com/watch?v=${encodeURIComponent(command.videoId)}`;
         if (state.tabId === null) {
@@ -4210,14 +4212,20 @@
     let timer = null;
     let onMessageInstalled = false;
     const poll = async () => {
-      if (!client) return;
+      if (!client) {
+        console.debug("[karaoke-player] poll skipped: no controller token");
+        return;
+      }
       try {
+        console.debug("[karaoke-player] polling controller", { baseUrl: activeConfig.baseUrl, after: sequence2 });
         const result = await client.poll(sequence2);
         if (result.command) {
           await router.route(result.command, state);
+          console.debug("[karaoke-player] command applied", { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
           sequence2 = result.sequence;
         } else sequence2 = Math.max(sequence2, result.sequence);
-      } catch {
+      } catch (error) {
+        console.error("[karaoke-player] controller poll failed", error);
       }
     };
     const stop = () => {
@@ -4230,6 +4238,7 @@
       stop();
       activeConfig = config;
       client = config.token ? createControllerClient(config) : null;
+      console.debug("[karaoke-player] configuration updated", { baseUrl: config.baseUrl, hasToken: Boolean(config.token) });
       if (client) {
         timer = setInterval(() => void poll(), 750);
         void poll();
@@ -4239,8 +4248,9 @@
       if (!client) return;
       const event = enrichContentEvent(rawMessage, state, sequence2, Date.now());
       if (event) {
+        console.debug("[karaoke-player] content event received", event);
         sequence2 = event.sequence;
-        void client.publish(event);
+        void client.publish(event).then(() => console.debug("[karaoke-player] content event published", { type: event.type, sequence: event.sequence })).catch((error) => console.error("[karaoke-player] event publish failed", error));
       }
     };
     if (!onMessageInstalled) {

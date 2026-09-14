@@ -3,11 +3,15 @@
   // players/firefox-extension/src/content.ts
   var video = () => document.querySelector("video");
   function installYouTubeContentScript(send = (event) => browser.runtime.sendMessage(event)) {
-    const report = (type, element) => send({
-      type,
-      position: element.currentTime,
-      ...type === "error" ? { code: "MEDIA_ERROR", message: "Video playback error" } : {}
-    });
+    console.debug("[karaoke-player] YouTube content script loaded", { href: location.href });
+    const report = (type, element) => {
+      console.debug("[karaoke-player] YouTube media event", { type, position: element.currentTime });
+      send({
+        type,
+        position: element.currentTime,
+        ...type === "error" ? { code: "MEDIA_ERROR", message: "Video playback error" } : {}
+      });
+    };
     const attach = () => {
       const element = video();
       if (!element || element.dataset.karaokeBound) return;
