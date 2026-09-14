@@ -12,7 +12,7 @@ node scripts/build.mjs
 KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local npm run start
 ```
 
-The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer <KARAOKE_TOKEN>`. Build output is generated from the TypeScript source into `dist/` and is ignored by git.
+The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer $KARAOKE_TOKEN`. Build output is generated from the TypeScript source into `dist/` and is ignored by git.
 
 ## API
 
