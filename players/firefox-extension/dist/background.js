@@ -4155,6 +4155,40 @@
     };
   }
 
+  // players/firefox-extension/src/events.ts
+  var DOM_EVENT_TYPES = {
+    loadedmetadata: "ready",
+    ready: "ready",
+    loading: "loading",
+    playing: "playing",
+    pause: "paused",
+    paused: "paused",
+    ended: "ended",
+    error: "error"
+  };
+  function mapDomEvent(event) {
+    const type = DOM_EVENT_TYPES[event.type];
+    if (!type) return null;
+    if (type === "error") {
+      if (!event.code || !event.message) return null;
+      return { type, position: event.position, code: event.code, message: event.message };
+    }
+    return { type, position: event.position };
+  }
+  function enrichContentEvent(input, active, previousSequence, timestamp2) {
+    const mapped = mapDomEvent(input);
+    if (!mapped || !active.roomId || !active.itemId || !active.videoId) return null;
+    const event = {
+      ...mapped,
+      roomId: active.roomId,
+      itemId: active.itemId,
+      videoId: active.videoId,
+      sequence: Math.max(1, previousSequence + 1),
+      timestamp: timestamp2
+    };
+    return playbackEventSchema.parse(event);
+  }
+
   // players/firefox-extension/src/config.ts
   var DEFAULT_CONTROLLER_URL = "http://127.0.0.1:3010";
   function parseStoredConfig(value) {
@@ -4169,32 +4203,58 @@
   // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
-    const config = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
-    if (!config.token) {
-      console.warn("Local Karaoke Player is idle: configure a bearer token in extension options.");
-      return { state, poll: async () => void 0 };
-    }
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
-    const client = createControllerClient(config);
+    let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
+    let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let sequence2 = 0;
+    let timer = null;
+    let onMessageInstalled = false;
     const poll = async () => {
+      if (!client) return;
       try {
         const result = await client.poll(sequence2);
         if (result.command) {
           await router.route(result.command, state);
           sequence2 = result.sequence;
-        } else {
-          sequence2 = Math.max(sequence2, result.sequence);
-        }
+        } else sequence2 = Math.max(sequence2, result.sequence);
       } catch {
       }
     };
+    const stop = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const configure = (config) => {
+      stop();
+      activeConfig = config;
+      client = config.token ? createControllerClient(config) : null;
+      if (client) {
+        timer = setInterval(() => void poll(), 750);
+        void poll();
+      }
+    };
+    const onMessage = (rawMessage) => {
+      if (!client) return;
+      const event = enrichContentEvent(rawMessage, state, sequence2, Date.now());
+      if (event) {
+        sequence2 = event.sequence;
+        void client.publish(event);
+      }
+    };
+    if (!onMessageInstalled) {
+      browserApi.runtime.onMessage.addListener(onMessage);
+      onMessageInstalled = true;
+    }
+    browserApi.storage.onChanged?.addListener((changes) => {
+      if ("baseUrl" in changes || "token" in changes) void browserApi.storage.local.get(["baseUrl", "token"]).then((stored) => configure(parseStoredConfig(stored)));
+    });
     browserApi.tabs.onRemoved.addListener((tabId) => {
       if (tabId === state.tabId) state.tabId = null;
     });
-    setInterval(poll, 750);
-    void poll();
-    return { state, poll };
+    configure(activeConfig);
+    return { state, poll, stop, configure };
   }
   if (typeof browser !== "undefined") void startBackground(browser);
 })();
