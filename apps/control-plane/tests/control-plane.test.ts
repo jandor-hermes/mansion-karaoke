@@ -23,6 +23,21 @@ async function request(plane: ControlPlane, path: string, init: RequestInit = {}
 async function json(response: Response) { return response.json() as Promise<any>; }
 
 describe('local control-plane vertical slice', () => {
+    it('allows the extension preflight and returns CORS headers', async () => {
+        const plane = await start();
+        const response = await fetch(`${plane.url}/command?after=0`, {
+            method: 'OPTIONS',
+            headers: {
+                Origin: 'moz-extension://local-karaoke-player',
+                'Access-Control-Request-Method': 'GET',
+                'Access-Control-Request-Headers': 'authorization',
+            },
+        });
+        expect(response.status).toBe(204);
+        expect(response.headers.get('access-control-allow-origin')).toBe('moz-extension://local-karaoke-player');
+        expect(response.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('authorization');
+    });
+
     it('enqueues two videos and emits an idempotent play-next command', async () => {
         const plane = await start();
         const first = await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
