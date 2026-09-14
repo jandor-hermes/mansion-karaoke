@@ -44,6 +44,7 @@ export function createControlPlane(options: Options): ControlPlane {
         response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     };
     const handler = async (request: IncomingMessage, response: ServerResponse) => {
+        console.log('[control-plane]', request.method, request.url, request.headers.origin ?? '-', request.headers.authorization ? 'auth' : 'no-auth');
         cors(request, response);
         if (request.method === 'OPTIONS') return send(response, 204);
         if (request.headers.authorization !== `Bearer ${options.token}`) return send(response, 401, { error: 'unauthorized' });
