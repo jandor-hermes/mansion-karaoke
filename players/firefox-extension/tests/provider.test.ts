@@ -59,7 +59,7 @@ describe('loopback controller client', () => {
 
     it('uses the configured loopback URL and session token for polling and events', async () => {
         const fetcher = vi.fn()
-            .mockResolvedValueOnce(new Response(JSON.stringify({ command: null }), { status: 200 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ command: null, sequence: 7 }), { status: 200 }))
             .mockResolvedValueOnce(new Response(null, { status: 204 }));
         const client = createControllerClient({ baseUrl: 'http://127.0.0.1:3010/', token: 'session-token', fetcher });
 

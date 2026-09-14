@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "verify-build": "node scripts/verify-build.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config ../../vitest.config.mts players/firefox-extension/tests/provider.test.ts"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1"
+  }
+}
