@@ -4112,11 +4112,14 @@
         if (state.tabId === null) {
           const tab = await this.tabs.create({ url, active: true });
           state.tabId = tab.id ?? null;
+          console.debug("[karaoke-player] created YouTube tab", { tabId: state.tabId, url });
         } else {
           try {
             await this.tabs.get(state.tabId);
+            console.debug("[karaoke-player] reusing YouTube tab", { tabId: state.tabId });
             await this.tabs.update(state.tabId, { url, active: true });
-          } catch {
+          } catch (error) {
+            console.debug("[karaoke-player] existing tab unavailable; creating YouTube tab", { error });
             const tab = await this.tabs.create({ url, active: true });
             state.tabId = tab.id ?? null;
           }

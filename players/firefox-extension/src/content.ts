@@ -15,7 +15,12 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
     };
     const attach = () => {
         const element = video();
-        if (!element || element.dataset.karaokeBound) return;
+        if (!element) {
+            console.debug('[karaoke-player] YouTube video element not found', { href: location.href });
+            return;
+        }
+        if (element.dataset.karaokeBound) return;
+        console.debug('[karaoke-player] YouTube video element attached', { href: location.href, readyState: element.readyState });
         element.dataset.karaokeBound = 'true';
         for (const event of ['loadedmetadata', 'playing', 'pause', 'ended', 'error']) {
             element.addEventListener(event, () => report(event === 'loadedmetadata' ? 'ready' : event, element));
