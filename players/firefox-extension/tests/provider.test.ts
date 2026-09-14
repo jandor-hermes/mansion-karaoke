@@ -45,6 +45,18 @@ describe('Firefox command router', () => {
 });
 
 describe('loopback controller client', () => {
+    it('rejects a malformed controller response before routing it', async () => {
+        const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ command: { type: 'not-valid' }, sequence: 1 }), { status: 200 }));
+        const client = createControllerClient({ baseUrl: 'http://127.0.0.1:3010', token: 'session-token', fetcher });
+        await expect(client.poll(0)).rejects.toThrow();
+    });
+
+    it('returns the command sequence needed for durable polling', async () => {
+        const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ command: null, sequence: 8 }), { status: 200 }));
+        const client = createControllerClient({ baseUrl: 'http://127.0.0.1:3010', token: 'session-token', fetcher });
+        await expect(client.poll(7)).resolves.toEqual({ command: null, sequence: 8 });
+    });
+
     it('uses the configured loopback URL and session token for polling and events', async () => {
         const fetcher = vi.fn()
             .mockResolvedValueOnce(new Response(JSON.stringify({ command: null }), { status: 200 }))

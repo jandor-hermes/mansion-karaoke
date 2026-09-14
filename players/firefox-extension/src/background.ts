@@ -9,7 +9,12 @@ export function startBackground(browserApi: typeof browser, options = { baseUrl:
     const poll = async () => {
         try {
             const result = await client.poll(sequence);
-            if (result.command) await router.route(result.command, state);
+            if (result.command) {
+                await router.route(result.command, state);
+                sequence = result.sequence;
+            } else {
+                sequence = Math.max(sequence, result.sequence);
+            }
         } catch { /* loopback controller may be offline */ }
     };
     browserApi.tabs.onRemoved.addListener((tabId: number) => { if (tabId === state.tabId) state.tabId = null; });
