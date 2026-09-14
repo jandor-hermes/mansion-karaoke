@@ -2,7 +2,18 @@
   "name": "@karaoke/control-plane",
   "private": true,
   "type": "module",
-  "scripts": { "test": "vitest run tests/*.test.ts", "start": "tsx src/server.ts", "search:smoke": "tsx scripts/search-smoke.ts" },
-  "dependencies": { "@karaoke/playback-protocol": "workspace:*" },
-  "devDependencies": { "tsx": "^4.19.0", "vitest": "^3.2.6", "@types/node": "^22.0.0" }
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node dist/apps/control-plane/src/server.js",
+    "test": "vitest run tests/*.test.ts",
+    "search:smoke": "node scripts/search-smoke.mjs"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.6"
+  }
 }
