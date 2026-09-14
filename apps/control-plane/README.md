@@ -10,7 +10,7 @@ From the repository root (dependencies must already be installed):
 KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local npm --prefix apps/control-plane run start
 ```
 
-The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer <KARAOKE_TOKEN>`.
+The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer $KARAOKE_TOKEN`.
 
 ## API
 
