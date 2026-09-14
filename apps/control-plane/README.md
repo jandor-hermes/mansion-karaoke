@@ -24,9 +24,11 @@ The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Eve
 
 ### Search integration seam
 
-The control plane intentionally does not import the vkara API runtime (which also prepares Redis-backed channel metadata). `src/youtube-search.ts` is the thin standalone Innertube adapter: it posts the same video-search request shape, parses raw `videoRenderer`/continuation nodes, and returns normalized `{ items, continuation }`. Construct the service with `createConfiguredYoutubeSearchAdapter()` when `YOUTUBE_API_KEY` or `INNERTUBE_API_KEY` is present; absent configuration returns explicit `search_not_configured`, and non-2xx upstream responses return `youtube_search_upstream_<status>`. The parser is fixture-tested without network access.
+The control plane intentionally does not import the vkara API runtime (Redis, BullMQ, or Elysia). Local source confirms that vkara creates `youtubei`'s `Client({ oauth: { enabled: false } })` and posts `/youtubei/v1/search` through `client.http.post`; the package supplies its Innertube client context and embedded client key. `src/youtube-search.ts` now exposes `createVkaraInnertubeSearchAdapter(client)`, a separate seam accepting that small client interface. It posts the vkara request shape without an official Data API key, parses raw `videoRenderer`/continuation nodes, and returns normalized `{ items, continuation }`. The adapter does not construct the `youtubei` client itself, so vkara's client/library extraction remains an explicit integration step.
 
-Run `npm --prefix apps/control-plane run search:smoke [query]` for an optional network smoke. It exits cleanly with `SKIP` when configuration is absent; network availability and YouTube response compatibility remain external gates.
+`createYoutubeApiKeySearchAdapter()` is retained as explicitly named legacy API-key mode. `createConfiguredYoutubeSearchAdapter()` selects that mode only when `YOUTUBE_API_KEY` or `INNERTUBE_API_KEY` is present; otherwise it reports `search_not_configured`. No live search claim is made. The parser and no-key client seam are fixture-tested without network access.
+
+Run `npm --prefix apps/control-plane run search:smoke [query]` for an optional no-secret smoke. It only checks the fixture-backed adapter seam and prints `SKIP` for live network access; live YouTube search is not exercised or claimed.
 
 The command sequence is monotonic. A provider can persist its last sequence and resume polling after an extension restart without replaying already-applied commands. Queue authority stays in this service.
 

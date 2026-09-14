@@ -2,7 +2,7 @@
   "name": "@karaoke/control-plane",
   "private": true,
   "type": "module",
-  "scripts": { "test": "vitest run tests/*.test.ts", "start": "tsx src/server.ts", "search:smoke": "if [ -z \"$YOUTUBE_API_KEY$INNERTUBE_API_KEY\" ]; then echo 'SKIP: set YOUTUBE_API_KEY or INNERTUBE_API_KEY to run search smoke'; else tsx scripts/search-smoke.ts; fi" },
+  "scripts": { "test": "vitest run tests/*.test.ts", "start": "tsx src/server.ts", "search:smoke": "tsx scripts/search-smoke.ts" },
   "dependencies": { "@karaoke/playback-protocol": "workspace:*" },
   "devDependencies": { "tsx": "^4.19.0", "vitest": "^3.2.6", "@types/node": "^22.0.0" }
 }

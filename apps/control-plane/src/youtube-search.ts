@@ -1,7 +1,12 @@
 import type { SearchAdapter, SearchPage, SearchVideo } from './search.js';
 
+type InnertubePostOptions = { data: Record<string, unknown> };
+export type InnertubeClientLike = {
+  http: { post(endpoint: string, options: InnertubePostOptions): Promise<{ data: unknown }> };
+};
 type FetchLike = typeof fetch;
-type Runtime = { apiKey?: string; fetch?: FetchLike; endpoint?: string };
+type Runtime = { client?: InnertubeClientLike; fetch?: FetchLike; endpoint?: string; apiKey?: string };
+export type YoutubeSearchRuntime = Runtime;
 
 const text = (value: unknown): string | undefined => {
   if (typeof value === 'string') return value;
@@ -21,7 +26,7 @@ function walk(value: unknown, out: SearchVideo[], continuations: string[]): void
     const title = text(video.title);
     const channel = text(video.ownerText) ?? text(video.longBylineText);
     const thumbs = (video.thumbnail as { thumbnails?: Array<{ url?: string }> } | undefined)?.thumbnails;
-    out.push({ id: video.videoId, ...(title ? { title } : { title: video.videoId }), ...(channel ? { channel } : {}), ...(text(video.lengthText) ? { duration: text(video.lengthText) } : {}), ...(thumbs?.at(-1)?.url ? { thumbnail: thumbs.at(-1)!.url } : {}) });
+    out.push({ id: video.videoId, title: title ?? video.videoId, ...(channel ? { channel } : {}), ...(text(video.lengthText) ? { duration: text(video.lengthText) } : {}), ...(thumbs?.at(-1)?.url ? { thumbnail: thumbs.at(-1)!.url } : {}) });
   }
   const continuation = record.continuationCommand as { token?: unknown } | undefined;
   if (typeof continuation?.token === 'string') continuations.push(continuation.token);
@@ -35,11 +40,24 @@ export function normalizeInnertubeSearchResponse(response: unknown): SearchPage 
   return { items, continuation: continuations[0] ?? null };
 }
 
+/** Adapter seam for vkara's youtubei Client; no Redis, BullMQ, or API key involved. */
+export function createVkaraInnertubeSearchAdapter(client: InnertubeClientLike): SearchAdapter {
+  return {
+    async search(query, continuation): Promise<SearchPage> {
+      const data = continuation ? { continuation } : { query, params: 'EgIQAQ==' };
+      const response = await client.http.post('/youtubei/v1/search', { data });
+      return normalizeInnertubeSearchResponse(response.data);
+    },
+  };
+}
+
+/** @deprecated Use createVkaraInnertubeSearchAdapter for the retained vkara path. */
 export function createYoutubeInnertubeSearchAdapter(runtime: Runtime): SearchAdapter {
+  if (runtime.client) return createVkaraInnertubeSearchAdapter(runtime.client);
   return {
     async search(query: string, continuation?: string): Promise<SearchPage> {
       if (!runtime.apiKey) throw new Error('search_not_configured');
-      const body = continuation ? { continuation } : { query, params: 'EgIQAQ%3D%3D' };
+      const body = continuation ? { continuation } : { query, params: 'EgIQAQ==' };
       const response = await (runtime.fetch ?? fetch)(runtime.endpoint ?? 'https://www.youtube.com/youtubei/v1/search?key=' + encodeURIComponent(runtime.apiKey), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       if (!response.ok) throw new Error(`youtube_search_upstream_${response.status}`);
       return normalizeInnertubeSearchResponse(await response.json());
@@ -47,6 +65,13 @@ export function createYoutubeInnertubeSearchAdapter(runtime: Runtime): SearchAda
   };
 }
 
+/** Explicit legacy official-API-key mode; not the vkara Innertube adapter. */
+export function createYoutubeApiKeySearchAdapter(runtime: Omit<Runtime, 'client'> & { apiKey: string }): SearchAdapter {
+  return createYoutubeInnertubeSearchAdapter(runtime);
+}
+
 export function createConfiguredYoutubeSearchAdapter(env: NodeJS.ProcessEnv = process.env): SearchAdapter {
-  return createYoutubeInnertubeSearchAdapter({ apiKey: env.YOUTUBE_API_KEY ?? env.INNERTUBE_API_KEY });
+  const apiKey = env.YOUTUBE_API_KEY ?? env.INNERTUBE_API_KEY;
+  if (!apiKey) return createYoutubeInnertubeSearchAdapter({});
+  return createYoutubeApiKeySearchAdapter({ apiKey });
 }
