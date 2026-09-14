@@ -7,11 +7,14 @@ export type SendMessage = (tabId: number, message: { type: 'pause' | 'resume' | 
 
 export const createInitialPlayerState = (): PlayerState => ({ tabId: null, status: 'idle' });
 
+const debug = (...args: unknown[]) => console.debug('[karaoke-player]', ...args);
+
 export class CommandRouter {
     constructor(private readonly tabs: BrowserTabs, private readonly sendMessage: SendMessage = async () => undefined) {}
 
     async route(input: unknown, state: PlayerState): Promise<void> {
         const command = playbackCommandSchema.parse(input);
+        debug('command received', { type: command.type, sequence: state.status, videoId: command.type === 'play' ? command.videoId : state.videoId });
         if (command.type === 'play') {
             const url = `https://www.youtube.com/watch?v=${encodeURIComponent(command.videoId)}`;
             if (state.tabId === null) {

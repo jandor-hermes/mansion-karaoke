@@ -4,11 +4,15 @@ type VideoCommand = { type: 'pause' | 'resume' | 'setVolume'; volume?: number };
 const video = () => document.querySelector('video') as HTMLVideoElement | null;
 
 export function installYouTubeContentScript(send: (event: unknown) => void = (event) => browser.runtime.sendMessage(event)) {
-    const report = (type: string, element: HTMLVideoElement) => send({
-        type,
-        position: element.currentTime,
-        ...(type === 'error' ? { code: 'MEDIA_ERROR', message: 'Video playback error' } : {}),
-    });
+    console.debug('[karaoke-player] YouTube content script loaded', { href: location.href });
+    const report = (type: string, element: HTMLVideoElement) => {
+        console.debug('[karaoke-player] YouTube media event', { type, position: element.currentTime });
+        send({
+            type,
+            position: element.currentTime,
+            ...(type === 'error' ? { code: 'MEDIA_ERROR', message: 'Video playback error' } : {}),
+        });
+    };
     const attach = () => {
         const element = video();
         if (!element || element.dataset.karaokeBound) return;
