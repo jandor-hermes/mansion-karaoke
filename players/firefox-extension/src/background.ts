@@ -6,9 +6,12 @@ import { parseStoredConfig, type ExtensionConfig } from './config';
 export async function startBackground(browserApi: typeof browser, options?: ExtensionConfig) {
     const state: PlayerState = createInitialPlayerState();
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), (browserApi as unknown as { windows?: BrowserWindows }).windows);
-    let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(['baseUrl', 'token']));
+    const initialStored = await browserApi.storage.local.get(['baseUrl', 'token', 'commandCursor']) as { commandCursor?: unknown };
+    let activeConfig = options ?? parseStoredConfig(initialStored);
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
-    let commandCursor = 0;
+    let commandCursor = typeof initialStored.commandCursor === 'number' && Number.isSafeInteger(initialStored.commandCursor) && initialStored.commandCursor >= 0
+        ? initialStored.commandCursor
+        : Number.MAX_SAFE_INTEGER;
     let eventSequence = 0;
     let timer: ReturnType<typeof setInterval> | null = null;
     let onMessageInstalled = false;
@@ -22,7 +25,8 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
                 await router.route(result.command, state);
                 console.debug('[karaoke-player] command applied', { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
                 commandCursor = result.sequence;
-            } else commandCursor = Math.max(commandCursor, result.sequence);
+            } else commandCursor = commandCursor === Number.MAX_SAFE_INTEGER ? result.sequence : Math.max(commandCursor, result.sequence);
+            await browserApi.storage.local.set({ commandCursor });
         } catch (error) { console.error('[karaoke-player] controller poll failed', error); }
     };
     const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
