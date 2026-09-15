@@ -1,5 +1,5 @@
 /* global browser */
-import { applyPresentation, presentationMessage } from './presentation';
+import { applyPresentation, clickYouTubeFullscreenButton, presentationMessage } from './presentation';
 
 type VideoCommand = { type: 'pause' | 'resume' | 'setVolume' | 'fullscreen'; volume?: number };
 const video = () => document.querySelector('video') as HTMLVideoElement | null;
@@ -60,6 +60,7 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
     browser.runtime.onMessage.addListener((rawMessage) => {
         const message = rawMessage as VideoCommand;
         if (presentationMessage(message)) {
+            clickYouTubeFullscreenButton(document);
             if (applyPresentation(document)) console.debug('[karaoke-player] video presentation applied');
             else console.error('[karaoke-player] video presentation failed');
             return;

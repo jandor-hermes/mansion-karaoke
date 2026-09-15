@@ -3,6 +3,22 @@
   // players/firefox-extension/src/presentation.ts
   var PRESENTATION_CLASS = "karaoke-video-presentation";
   var PRESENTATION_STYLE_ID = "karaoke-video-presentation-style";
+  var YOUTUBE_FULLSCREEN_BUTTON_SELECTOR = 'button.ytp-fullscreen-button[aria-label*="Full screen"]';
+  function clickYouTubeFullscreenButton(documentLike, logger = (message, details) => console.debug(`[karaoke-player] ${message}`, details)) {
+    const button = documentLike.querySelector(YOUTUBE_FULLSCREEN_BUTTON_SELECTOR);
+    if (!button) {
+      logger("YouTube fullscreen button not found", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR });
+      return false;
+    }
+    logger("YouTube fullscreen button located", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, button });
+    try {
+      button.click();
+      return true;
+    } catch (error) {
+      logger("YouTube fullscreen button click failed", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, error });
+      return false;
+    }
+  }
   var presentationMessage = (message) => Boolean(message && typeof message === "object" && message.type === "fullscreen");
   function applyPresentation(documentLike) {
     try {
@@ -93,6 +109,7 @@ html.${PRESENTATION_CLASS} video.html5-main-video {
     browser.runtime.onMessage.addListener((rawMessage) => {
       const message = rawMessage;
       if (presentationMessage(message)) {
+        clickYouTubeFullscreenButton(document);
         if (applyPresentation(document)) console.debug("[karaoke-player] video presentation applied");
         else console.error("[karaoke-player] video presentation failed");
         return;
