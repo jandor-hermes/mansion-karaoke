@@ -64,6 +64,11 @@ describe('guest UI page', () => {
         expect(html).toContain('/control/skip');           // control buttons
         expect(html).toContain('/control/volume');
         expect(html).toContain('/control/fullscreen');
+        expect(html).toContain('/queue/remove');          // queue remove button
+        expect(html).toContain('/queue/move');            // queue move up/down buttons
+        expect(html).toContain('queue-remove');           // button markers
+        expect(html).toContain('queue-up');
+        expect(html).toContain('queue-down');
         expect(html).toContain('localStorage');            // token storage
         expect(html).toContain('party-room');              // room name in header
         expect(html).toContain('viewport');                // phone-friendly

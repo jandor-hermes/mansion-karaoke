@@ -18,13 +18,15 @@ Every API request except `GET /` requires `Authorization: Bearer <KARAOKE_TOKEN>
 
 ## Guest UI (phones)
 
-Open `http://<Mac-LAN-IP>:3010/` on a phone on the same Wi-Fi (the exact URL is printed at startup, e.g. `http://192.168.4.31:3010/`). The page is a single static HTML+JS file served by the control plane — dark party styling, big touch targets, no framework or build step. On first load it prompts for the party token once and stores it in the browser's `localStorage` (the token is a shared party secret, not a personal credential). It supports search (tappable result cards queue via `POST /queue` with a fresh `crypto.randomUUID()` itemId), a Now playing + queue view polled from `GET /status` every 2.5 s, and pause/resume, skip, volume ±0.25, and fullscreen control buttons.
+Open `http://<Mac-LAN-IP>:3010/` on a phone on the same Wi-Fi (the exact URL is printed at startup, e.g. `http://192.168.4.31:3010/`). The page is a single static HTML+JS file served by the control plane — dark party styling, big touch targets, no framework or build step. On first load it prompts for the party token once and stores it in the browser's `localStorage` (the token is a shared party secret, not a personal credential). It supports search (tappable result cards queue via `POST /queue` with a fresh `crypto.randomUUID()` itemId), a Now playing + queue view polled from `GET /status` every 2.5 s, and pause/resume, skip, volume ±0.25, and fullscreen control buttons. Each queued card has `↑`/`↓` buttons (move up/down via `POST /queue/move`) and a `✕` button (remove via `POST /queue/remove`); the currently playing card has no such buttons.
 
 CORS: the control plane allows the Firefox extension origin plus same-LAN `http:` origins (`192.168.x.x`, `10.x.x.x`, `172.16–31.x.x`, `localhost`/`127.0.0.1`), so the phone-served page can call the API; `https` and public-host origins are rejected.
 
 ## API
 
 - `POST /queue` — JSON `{ "itemId": "song-1", "videoId": "YouTubeId" }` (duplicate item IDs are idempotent)
+- `POST /queue/remove` — JSON `{ "itemId": "song-1" }`; removes a queued item and returns `{ "queue": [...] }`. Returns `409` for the currently playing item (skip instead) and `404` if the item is not queued.
+- `POST /queue/move` — JSON `{ "itemId": "song-1", "position": 0 }`; 0-based index within the remaining queue, invalid positions are clamped. Returns `400` for the currently playing item or an unknown itemId, plus the updated `{ "queue": [...] }` on success.
 - `GET /command?after=<sequence>` — returns the next command after the provider's last applied sequence, or `{ command: null, sequence }`
 - `POST /events` — accepts schemas from `packages/playback-protocol` (an `ended` event for the current item advances the queue)
 - `POST /control/pause`, `/control/resume`, `/control/skip`
@@ -48,6 +50,6 @@ The command sequence is monotonic. A provider can persist its last sequence and 
 npm --prefix apps/control-plane test
 ```
 
-The integration tests cover authentication, enqueue/play-next, ended advancement, skip, pause/resume/volume, idempotent queueing, and provider restart polling recovery.
+The integration tests cover authentication, enqueue/play-next, ended advancement, skip, pause/resume/volume, idempotent queueing, provider restart polling recovery, queue removal (including the currently-playing guard), and queue reordering with position clamping.
 
 The implementation retains the repository's MIT attribution and uses the existing provider-neutral protocol schemas.

@@ -127,6 +127,27 @@ export function createControlPlane(options: Options): ControlPlane {
                 const wasIdle = !current; queue.push(value); if (wasIdle) startNext();
                 return send(response, 201, value);
             }
+            if (request.method === 'POST' && urlObject.pathname === '/queue/remove') {
+                const value = await body(request) as { itemId?: unknown };
+                if (typeof value.itemId !== 'string' || value.itemId.length === 0) return send(response, 400, { error: 'itemId required' });
+                if (current?.itemId === value.itemId) return send(response, 409, { error: 'cannot remove the currently playing item; skip instead' });
+                const index = queue.findIndex((item) => item.itemId === value.itemId);
+                if (index === -1) return send(response, 404, { error: 'item not found in queue' });
+                queue.splice(index, 1);
+                return send(response, 200, { queue });
+            }
+            if (request.method === 'POST' && urlObject.pathname === '/queue/move') {
+                const value = await body(request) as { itemId?: unknown; position?: unknown };
+                if (typeof value.itemId !== 'string' || value.itemId.length === 0) return send(response, 400, { error: 'itemId required' });
+                if (typeof value.position !== 'number' || !Number.isFinite(value.position)) return send(response, 400, { error: 'position must be a number' });
+                if (current?.itemId === value.itemId) return send(response, 400, { error: 'cannot move the currently playing item' });
+                const index = queue.findIndex((item) => item.itemId === value.itemId);
+                if (index === -1) return send(response, 400, { error: 'item not found in queue' });
+                const target = Math.max(0, Math.min(queue.length - 1, Math.trunc(value.position)));
+                const [moved] = queue.splice(index, 1);
+                queue.splice(target, 0, moved);
+                return send(response, 200, { queue });
+            }
             if (request.method === 'POST' && urlObject.pathname === '/events') {
                 const event = playbackEventSchema.parse(await body(request)) as PlaybackEvent;
                 if (event.type === 'ended' && current?.itemId === event.itemId) { current = null; startNext(); }
