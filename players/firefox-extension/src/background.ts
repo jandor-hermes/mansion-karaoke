@@ -14,13 +14,19 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         : Number.MAX_SAFE_INTEGER;
     let eventSequence = 0;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let pollInFlight: Promise<void> | null = null;
     let onMessageInstalled = false;
 
-    const poll = async () => {
+    const runPoll = async () => {
         if (!client) { console.debug('[karaoke-player] poll skipped: no controller token'); return; }
         try {
             console.debug('[karaoke-player] polling controller', { baseUrl: activeConfig.baseUrl, after: commandCursor });
-            const result = await client.poll(commandCursor);
+            let result = await client.poll(commandCursor);
+            if (!result.command && commandCursor !== Number.MAX_SAFE_INTEGER && result.sequence < commandCursor) {
+                console.debug('[karaoke-player] controller restart detected; resetting command cursor', { previous: commandCursor, current: result.sequence });
+                commandCursor = 0;
+                result = await client.poll(0);
+            }
             if (result.command) {
                 await router.route(result.command, state);
                 console.debug('[karaoke-player] command applied', { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
@@ -28,6 +34,11 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
             } else commandCursor = commandCursor === Number.MAX_SAFE_INTEGER ? result.sequence : Math.max(commandCursor, result.sequence);
             await browserApi.storage.local.set({ commandCursor });
         } catch (error) { console.error('[karaoke-player] controller poll failed', error); }
+    };
+    const poll = () => {
+        if (pollInFlight) return pollInFlight;
+        pollInFlight = runPoll().finally(() => { pollInFlight = null; });
+        return pollInFlight;
     };
     const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
     const configure = (config: ExtensionConfig) => {
