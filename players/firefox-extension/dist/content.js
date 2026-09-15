@@ -4,20 +4,61 @@
   var PRESENTATION_CLASS = "karaoke-video-presentation";
   var PRESENTATION_STYLE_ID = "karaoke-video-presentation-style";
   var YOUTUBE_FULLSCREEN_BUTTON_SELECTOR = 'button.ytp-fullscreen-button[aria-label*="Full screen"]';
-  function clickYouTubeFullscreenButton(documentLike, logger = (message, details) => console.debug(`[karaoke-player] ${message}`, details)) {
+  var YOUTUBE_THEATER_BUTTON_SELECTOR = "button.ytp-size-button";
+  var YOUTUBE_WATCH_FLEXY_SELECTOR = "ytd-watch-flexy";
+  var YOUTUBE_PLAYER_SELECTOR = "#movie_player";
+  var YOUTUBE_VIDEO_SELECTOR = "video.html5-main-video";
+  var defaultLogger = (message, details) => console.debug(`[karaoke-player] ${message}`, details);
+  function clickYouTubeFullscreenButton(documentLike, logger = defaultLogger) {
     const button = documentLike.querySelector(YOUTUBE_FULLSCREEN_BUTTON_SELECTOR);
     if (!button) {
-      logger("YouTube fullscreen button not found", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR });
+      logger("YouTube fullscreen button not found (best-effort attempt only; CSS presentation will proceed)", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR });
       return false;
     }
     logger("YouTube fullscreen button located", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, button });
     try {
       button.click();
+      logger("YouTube fullscreen button clicked; NOTE a synthetic click may lack trusted user activation, so YouTube's requestFullscreen may be rejected \u2014 CSS presentation is the fallback", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR });
       return true;
     } catch (error) {
-      logger("YouTube fullscreen button click failed", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, error });
+      logger("YouTube fullscreen button click failed (expected: untrusted activation); falling back to CSS presentation", { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, error });
       return false;
     }
+  }
+  function activateTheaterMode(documentLike, logger = defaultLogger) {
+    const flexy = documentLike.querySelector(YOUTUBE_WATCH_FLEXY_SELECTOR);
+    if (flexy?.hasAttribute("theater")) {
+      logger("YouTube theater mode already active", { selector: YOUTUBE_WATCH_FLEXY_SELECTOR });
+      return true;
+    }
+    const button = documentLike.querySelector(YOUTUBE_THEATER_BUTTON_SELECTOR);
+    if (button) {
+      try {
+        button.click();
+        logger("YouTube theater (size) button clicked; YouTube applies the layout asynchronously", { selector: YOUTUBE_THEATER_BUTTON_SELECTOR, button });
+        return true;
+      } catch (error) {
+        logger("YouTube theater button click failed; trying attribute toggle", { selector: YOUTUBE_THEATER_BUTTON_SELECTOR, error });
+      }
+    } else {
+      logger("YouTube theater (size) button not found; trying attribute toggle", { selector: YOUTUBE_THEATER_BUTTON_SELECTOR });
+    }
+    if (documentLike.querySelector(YOUTUBE_WATCH_FLEXY_SELECTOR)?.hasAttribute("theater")) {
+      logger("YouTube theater mode active after button click", { selector: YOUTUBE_WATCH_FLEXY_SELECTOR });
+      return true;
+    }
+    const flexyElements = documentLike.querySelectorAll?.(YOUTUBE_WATCH_FLEXY_SELECTOR);
+    if (flexyElements && flexyElements.length > 0) {
+      try {
+        flexyElements[0].setAttribute?.("theater", "");
+        logger("set theater attribute on ytd-watch-flexy directly", { selector: YOUTUBE_WATCH_FLEXY_SELECTOR });
+        return true;
+      } catch (error) {
+        logger("failed to set theater attribute on ytd-watch-flexy", { selector: YOUTUBE_WATCH_FLEXY_SELECTOR, error });
+      }
+    }
+    logger("theater mode could not be confirmed; presentation CSS will stretch the player anyway", { selector: YOUTUBE_WATCH_FLEXY_SELECTOR });
+    return false;
   }
   var presentationMessage = (message) => Boolean(message && typeof message === "object" && message.type === "fullscreen");
   function applyPresentation(documentLike) {
@@ -28,25 +69,32 @@
         const style = documentLike.createElement("style");
         style.id = PRESENTATION_STYLE_ID;
         style.textContent = `
-html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !important; overflow: hidden !important; }
+/* Hide page chrome */
 html.${PRESENTATION_CLASS} #masthead-container, html.${PRESENTATION_CLASS} ytd-masthead,
-html.${PRESENTATION_CLASS} #guide, html.${PRESENTATION_CLASS} #secondary,
-html.${PRESENTATION_CLASS} #comments, html.${PRESENTATION_CLASS} #related,
-html.${PRESENTATION_CLASS} ytd-watch-next-secondary-results-renderer,
-html.${PRESENTATION_CLASS} #player-ads, html.${PRESENTATION_CLASS} .ytp-chrome-top,
-html.${PRESENTATION_CLASS} .ytp-chrome-bottom, html.${PRESENTATION_CLASS} .ytp-gradient-top,
-html.${PRESENTATION_CLASS} .ytp-gradient-bottom { display: none !important; }
+html.${PRESENTATION_CLASS} #guide, html.${PRESENTATION_CLASS} #guide-spacer,
+html.${PRESENTATION_CLASS} #secondary, html.${PRESENTATION_CLASS} #comments,
+html.${PRESENTATION_CLASS} #related, html.${PRESENTATION_CLASS} ytd-watch-next-secondary-results-renderer,
+html.${PRESENTATION_CLASS} #player-ads { display: none !important; }
+/* Expand the watch layout: uncap widths so the player area can fill the viewport */
+html.${PRESENTATION_CLASS} ytd-app, html.${PRESENTATION_CLASS} #content,
 html.${PRESENTATION_CLASS} ytd-page-manager, html.${PRESENTATION_CLASS} #page-manager,
-html.${PRESENTATION_CLASS} #content, html.${PRESENTATION_CLASS} #player-container-outer,
-html.${PRESENTATION_CLASS} #player-container-inner, html.${PRESENTATION_CLASS} #movie_player {
-    position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
-    max-width: none !important; margin: 0 !important; padding: 0 !important;
+html.${PRESENTATION_CLASS} ytd-watch-flexy, html.${PRESENTATION_CLASS} #columns,
+html.${PRESENTATION_CLASS} #primary, html.${PRESENTATION_CLASS} #primary-inner,
+html.${PRESENTATION_CLASS} #player {
+    max-width: none !important; width: auto !important; padding: 0 !important; margin: 0 !important;
 }
-html.${PRESENTATION_CLASS} #movie_player video,
-html.${PRESENTATION_CLASS} video.html5-main-video {
-    position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
-    max-width: 100% !important; max-height: 100% !important; object-fit: contain !important;
+/* Stretch the player container chain to the full viewport \u2014 no position hacks,
+   no styling of the <video> element itself */
+html.${PRESENTATION_CLASS} #player,
+html.${PRESENTATION_CLASS} #player-container-outer,
+html.${PRESENTATION_CLASS} #player-container-inner {
+    width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important;
 }
+html.${PRESENTATION_CLASS} #movie_player {
+    width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important;
+}
+/* Immersive background */
+html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !important; }
 `;
         documentLike.head.append(style);
       }
@@ -54,6 +102,14 @@ html.${PRESENTATION_CLASS} video.html5-main-video {
     } catch {
       return false;
     }
+  }
+  function logPresentationDiagnostics(documentLike, logger = defaultLogger) {
+    const player = documentLike.querySelector(YOUTUBE_PLAYER_SELECTOR);
+    const video2 = documentLike.querySelector(YOUTUBE_VIDEO_SELECTOR);
+    logger("presentation diagnostics", {
+      player: player ? { selector: YOUTUBE_PLAYER_SELECTOR, rect: player.getBoundingClientRect() } : { selector: YOUTUBE_PLAYER_SELECTOR, found: false },
+      video: video2 ? { selector: YOUTUBE_VIDEO_SELECTOR, rect: video2.getBoundingClientRect(), intrinsic: { videoWidth: video2.videoWidth, videoHeight: video2.videoHeight } } : { selector: YOUTUBE_VIDEO_SELECTOR, found: false }
+    });
   }
 
   // players/firefox-extension/src/content.ts
@@ -110,8 +166,10 @@ html.${PRESENTATION_CLASS} video.html5-main-video {
       const message = rawMessage;
       if (presentationMessage(message)) {
         clickYouTubeFullscreenButton(document);
+        activateTheaterMode(document);
         if (applyPresentation(document)) console.debug("[karaoke-player] video presentation applied");
         else console.error("[karaoke-player] video presentation failed");
+        logPresentationDiagnostics(document);
         return;
       }
       const element = video();
