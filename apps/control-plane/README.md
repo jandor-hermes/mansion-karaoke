@@ -12,7 +12,15 @@ node scripts/build.mjs
 KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local npm run start
 ```
 
-The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer $KARAOKE_TOKEN`. Build output is generated from the TypeScript source into `dist/` and is ignored by git.
+The service binds `0.0.0.0` (all interfaces) so phones on the same Wi-Fi can load the guest page; set `KARAOKE_BIND=127.0.0.1` to restrict it to loopback again. **Security tradeoff:** binding LAN-wide exposes an authenticated control API (queue, playback controls) to everyone on the local network — anyone with the `KARAOKE_TOKEN` party secret can steer playback, so use a long random token and treat it as shared, revocable, and unsuitable for untrusted networks. At startup the server prints its loopback URL plus `guest UI (phones on this Wi-Fi): http://<LAN-IP>:<PORT>/` lines for every LAN IPv4 address it detects.
+
+Every API request except `GET /` requires `Authorization: Bearer <KARAOKE_TOKEN>`.
+
+## Guest UI (phones)
+
+Open `http://<Mac-LAN-IP>:3010/` on a phone on the same Wi-Fi (the exact URL is printed at startup, e.g. `http://192.168.4.31:3010/`). The page is a single static HTML+JS file served by the control plane — dark party styling, big touch targets, no framework or build step. On first load it prompts for the party token once and stores it in the browser's `localStorage` (the token is a shared party secret, not a personal credential). It supports search (tappable result cards queue via `POST /queue` with a fresh `crypto.randomUUID()` itemId), a Now playing + queue view polled from `GET /status` every 2.5 s, and pause/resume, skip, volume ±0.25, and fullscreen control buttons.
+
+CORS: the control plane allows the Firefox extension origin plus same-LAN `http:` origins (`192.168.x.x`, `10.x.x.x`, `172.16–31.x.x`, `localhost`/`127.0.0.1`), so the phone-served page can call the API; `https` and public-host origins are rejected.
 
 ## API
 
