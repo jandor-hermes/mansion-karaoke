@@ -95,6 +95,9 @@ describe('guest UI page', () => {
         expect(html).toContain('history-list');
         expect(html).toContain('queue-play');
         expect(html).toContain('/queue/play');
+        expect(html).toContain('clear-queue');
+        expect(html).toContain('clear-queue-confirm');
+        expect(html).toContain('/queue/clear');
         expect(html).toContain('localStorage');            // token storage
         expect(html).toContain('party-room');              // room name in header
         expect(html).toContain('viewport');                // phone-friendly

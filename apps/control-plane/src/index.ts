@@ -204,6 +204,10 @@ export function createControlPlane(options: Options): ControlPlane {
                 issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
                 return send(response, 200, { current, queue, history });
             }
+            if (request.method === 'POST' && urlObject.pathname === '/queue/clear') {
+                queue.length = 0;
+                return send(response, 200, { queue });
+            }
             if (request.method === 'POST' && urlObject.pathname === '/queue/remove') {
                 const value = await body(request) as { itemId?: unknown };
                 if (typeof value.itemId !== 'string' || value.itemId.length === 0) return send(response, 400, { error: 'itemId required' });

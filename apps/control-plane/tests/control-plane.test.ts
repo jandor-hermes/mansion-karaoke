@@ -246,6 +246,28 @@ describe('queue history and direct selection', () => {
     });
 });
 
+describe('queue clearing', () => {
+    it('clears every waiting item without interrupting the current song or adding history', async () => {
+        const plane = await start();
+        for (const videoId of ['first', 'second', 'third']) {
+            await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item(videoId)) });
+        }
+
+        const response = await request(plane, '/queue/clear', { method: 'POST' });
+        expect(response.status).toBe(200);
+        expect(await json(response)).toEqual({ queue: [] });
+        const status = await json(await request(plane, '/status'));
+        expect(status.current).toEqual(item('first'));
+        expect(status.queue).toEqual([]);
+        expect(status.history).toEqual([]);
+    });
+
+    it('requires authentication', async () => {
+        const plane = await start();
+        expect((await fetch(`${plane.url}/queue/clear`, { method: 'POST' })).status).toBe(401);
+    });
+});
+
 describe('queue removal and reordering', () => {
     it('removes the requested queued item and returns the updated queue', async () => {
         const plane = await start();
