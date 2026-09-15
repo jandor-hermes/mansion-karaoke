@@ -18,13 +18,13 @@ Every API request except `GET /` requires `Authorization: Bearer <KARAOKE_TOKEN>
 
 ## Guest UI (phones)
 
-Open `http://<Mac-LAN-IP>:3010/` on a phone on the same Wi-Fi (the exact URL is printed at startup, e.g. `http://192.168.4.31:3010/`). The page is a single static HTML+JS file served by the control plane — dark party styling, big touch targets, no framework or build step. On first load it prompts for the party token once and stores it in the browser's `localStorage` (the token is a shared party secret, not a personal credential). It supports search (tappable result cards queue via `POST /queue` with a fresh `crypto.randomUUID()` itemId), a Now playing + queue view polled from `GET /status` every 2.5 s, and pause/resume, skip, volume ±0.25, and fullscreen control buttons. Each queued card has `↑`/`↓` buttons (move up/down via `POST /queue/move`) and a `✕` button (remove via `POST /queue/remove`); the currently playing card has no such buttons.
+Open `http://<Mac-LAN-IP>:3010/` on a phone on the same Wi-Fi (the exact URL is printed at startup, e.g. `http://192.168.4.31:3010/`). The page is a single static HTML+JS file served by the control plane — dark party styling, big touch targets, no framework or build step. On first load it asks for a display name and shows the party token as ordinary text for easy entry, then stores both in that phone browser's `localStorage` (the token remains a shared party secret, not a personal credential). New queue items carry the display name as `requestedBy`, which appears in Now Playing, Queue, and History; guests can edit their name or token through Profile. It supports search, a Now playing + queue view polled from `GET /status` every 2.5 s, and pause/resume, skip, volume ±0.25, and fullscreen control buttons. Each queued card has `↑`/`↓` buttons (move up/down via `POST /queue/move`) and a `✕` button (remove via `POST /queue/remove`); the currently playing card has no such buttons.
 
 CORS: the control plane allows the Firefox extension origin plus same-LAN `http:` origins (`192.168.x.x`, `10.x.x.x`, `172.16–31.x.x`, `localhost`/`127.0.0.1`), so the phone-served page can call the API; `https` and public-host origins are rejected.
 
 ## API
 
-- `POST /queue` — enqueue a song; accepts `{ "itemId": "song-1", "videoId": "YouTubeId", "title": "optional", "channel": "optional", "duration": "optional", "thumbnail": "optional" }` (duplicate item IDs are idempotent)
+- `POST /queue` — enqueue a song; accepts `{ "itemId": "song-1", "videoId": "YouTubeId", "title": "optional", "channel": "optional", "duration": "optional", "thumbnail": "optional", "requestedBy": "optional display name" }` (duplicate item IDs are idempotent)
 - `POST /queue/next` — put a song at the front of the waiting queue; starts immediately when idle
 - `POST /queue/play-now` — interrupt and play a new song immediately while preserving the waiting queue
 - `POST /queue/play` — JSON `{ "itemId": "song-1" }`; play an existing queued item immediately while preserving the relative order of every other waiting item
