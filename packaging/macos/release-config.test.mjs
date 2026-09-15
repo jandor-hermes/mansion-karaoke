@@ -9,8 +9,8 @@ const workflow = readFileSync(path.join(root, '.github/workflows/macos-app.yml')
 const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
 const friendSetup = readFileSync(path.join(root, 'FRIEND_SETUP.md'), 'utf8');
 
-test('workflow installs the existing dependency graph without rewriting the lockfile', () => {
-  assert.match(workflow, /run: bun install --no-save/);
+test('workflow installs the root and standalone Firefox dependency graphs', () => {
+  assert.match(workflow, /run: \|\n\s+bun install --no-save\n\s+bun install --cwd players\/firefox-extension --no-save/);
   assert.doesNotMatch(workflow, /bun install --frozen-lockfile/);
 });
 
