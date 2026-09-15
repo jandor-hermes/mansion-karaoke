@@ -9,6 +9,11 @@ const workflow = readFileSync(path.join(root, '.github/workflows/macos-app.yml')
 const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
 const friendSetup = readFileSync(path.join(root, 'FRIEND_SETUP.md'), 'utf8');
 
+test('workflow installs the existing dependency graph without rewriting the lockfile', () => {
+  assert.match(workflow, /run: bun install --no-save/);
+  assert.doesNotMatch(workflow, /bun install --frozen-lockfile/);
+});
+
 test('workflow requires the exact thin architecture for both executables', () => {
   const architectureAssertions = workflow.match(/\[\[ "\$\(lipo -archs '[^']+'\)" == '\$\{\{ matrix\.arch \}\}' \]\]/g) ?? [];
   assert.equal(architectureAssertions.length, 2);
