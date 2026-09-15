@@ -87,6 +87,7 @@ describe('guest UI page', () => {
         expect(html).toContain('change-token');
         expect(html).toContain('quick-add');
         expect(html).toContain('load-more');
+        expect(html).toContain("$('results').textContent='';visibleResults=0;renderMore()");
         expect(html).toContain('toast');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-label="Pause playback"');
