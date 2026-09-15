@@ -1,299 +1,96 @@
-<p align="center">
-  <img src="apps/web/public/icons/vkara-icon.svg" alt="vkara logo" width="72" height="72" />
-</p>
+# Mansion Karaoke
 
-<h1 align="center">vkara</h1>
+A local-network karaoke host for house parties. One Mac runs the controller and a dedicated Firefox/YouTube player; guests search, queue songs, and control playback from their phones on the same Wi-Fi.
 
-<p align="center">
-  <strong>Turn your TV into a karaoke machine.</strong><br />
-  Friends pick songs from their phones - no typing on the TV remote.
-</p>
+## Current status
 
-<p align="center">
-  <img alt="No account required" src="https://img.shields.io/badge/no_account-required-brightgreen">
-  <img alt="Phone as remote" src="https://img.shields.io/badge/phone_as-remote-blue">
-  <img alt="YouTube-powered search" src="https://img.shields.io/badge/search-YouTube-red">
-  <img alt="Self-hostable" src="https://img.shields.io/badge/self--hostable-Docker-2496ED">
-</p>
+Mansion Karaoke is a developer preview for macOS. The current distribution flow uses a source checkout, a Terminal launcher, and a temporary Firefox extension. Guests install nothing.
 
-<p align="center">
-  Open vkara on a TV or laptop. Everyone joins from their phone, searches YouTube karaoke videos, adds songs to the queue, and controls playback together - <strong>no app install, no account</strong>.
-</p>
+For the complete host walkthrough, see **[Friend Setup](FRIEND_SETUP.md)**.
 
-<p align="center">
-  Made for house parties, family karaoke nights, dorm rooms, and small gatherings.
-</p>
+## Quick start
 
-<p align="center">
-  <a href="https://vkara.vercel.app/en"><strong>Try it live → vkara.vercel.app/en</strong></a>
-</p>
+Requirements:
 
-<p align="center">
-  <a href="README.md"><strong>English</strong></a>
-  ·
-  <a href="docs/vi/README.md">Tiếng Việt</a>
-  <!-- · <a href="docs/xx/README.md">Language</a> -->
-</p>
+- macOS
+- Firefox
+- Git
+- Bun 1.3.13 or newer
+- Node.js 22 or newer
 
-<p align="center">
-  <a href="#why-vkara">Why vkara</a> ·
-  <a href="#usage">How to use</a> ·
-  <a href="#self-host">Self-host</a> ·
-  <a href="#copyright--legal-notice">Copyright</a> ·
-  <a href="#for-developers">Developers</a>
-</p>
+```sh
+git clone https://github.com/jandor-hermes/mansion-karaoke.git
+cd mansion-karaoke
+./scripts/karaoke-dev.sh run
+```
 
-<p align="center">
-  <table>
-    <tr>
-      <td width="25%" align="center"><img src="assets/image/join.jpg" alt="Join a room with a code or QR" width="100%" /></td>
-      <td width="25%" align="center"><img src="assets/image/home.jpg" alt="Search YouTube on your phone" width="100%" /></td>
-      <td width="25%" align="center"><img src="assets/image/search.jpg" alt="Play, add, or queue a song" width="100%" /></td>
-      <td width="25%" align="center"><img src="assets/image/control.jpg" alt="Control playback from your phone" width="100%" /></td>
-    </tr>
-    <tr>
-      <td align="center"><sub><strong>Join</strong></sub></td>
-      <td align="center"><sub><strong>Search</strong></sub></td>
-      <td align="center"><sub><strong>Add songs</strong></sub></td>
-      <td align="center"><sub><strong>Remote</strong></sub></td>
-    </tr>
-  </table>
-</p>
+Then load `players/firefox-extension/dist/manifest.json` from Firefox:
 
-<p align="center"><em>One shared player on the big screen. Everyone else uses their phone as the remote.</em></p>
+1. Open `about:debugging`.
+2. Select **This Firefox**.
+3. Select **Load Temporary Add-on…**.
+4. Choose the generated `manifest.json`.
+5. Open the extension toolbar popup.
+6. Enter the controller URL and token printed in Terminal.
+7. Select **Save & start**.
 
----
-
-## Why vkara?
-
-- **No one types on a TV remote** - search and queue from a phone keyboard.
-- **Everyone can add songs** - not just whoever holds the remote.
-- **One shared player screen** - the TV stays on the video; phones handle control.
-- **Browser only** - no install, no sign-up, no app store.
-- **Self-host if you want** - one Docker image runs the full stack at home.
+The TV/player page displays a QR code. Guest phones on the same Wi-Fi scan it to join.
 
 ## How it works
 
-1. **TV or laptop** - open vkara. A room appears with a **4-digit code** and **QR**.
-2. **Phones** - open the same site, enter the code or scan the QR.
-3. **Sing together** - search YouTube, build the queue, skip, pause. Everyone stays in sync.
+Mansion Karaoke keeps playback and party coordination separate:
 
-### Usage
+- **Local control plane** — owns the queue and room state, serves the guest phone UI, searches YouTube, accepts controls, and advances the queue.
+- **Firefox player extension** — controls one normal YouTube watch tab and reports observed playback events to the controller.
+- **Guest phones** — use the controller’s local web page; no app or account is required.
 
-The local Firefox playback agent supports authenticated `POST /control/fullscreen`; it presents the dedicated YouTube window through the Firefox `windows` API rather than relying on remote page `requestFullscreen()` activation. Real Firefox/TV fullscreen behavior remains a manual acceptance check.
+The controller binds to the local network during a session. Anyone with the displayed QR code or party token can control playback, so use it only on a trusted network.
 
-### Local Firefox party build
+## Developer commands
 
-The `karaoke-app` branch contains a developer-preview local controller and Firefox player for hosting from a Mac without Redis or Docker. See **[Friend setup](FRIEND_SETUP.md)** for the complete clone, build, Firefox, phone, update, and troubleshooting walkthrough.
+```sh
+# Install dependencies and build both components
+./scripts/karaoke-dev.sh prepare
 
+# Start an existing build
+./scripts/karaoke-dev.sh start
 
-### Host (TV / laptop)
+# Prepare and start
+./scripts/karaoke-dev.sh run
 
-1. Open [vkara](https://vkara.vercel.app/en) in Chrome or Edge on the big screen.
-2. Share the **code** or **QR** with friends.
-3. Hit fullscreen and let the queue run.
+# Launcher tests
+bun run karaoke:dev:test
 
-### Guest (phone)
+# Firefox checks
+bun run firefox:test
+bun run firefox:check
+bun run firefox:verify
 
-1. Open vkara, scan the QR or type the room code.
-2. Search, add songs, control playback from your phone.
-3. Enter the room password if the host set one.
-
-### Tips
-
-| Situation              | What to do                                |
-| ---------------------- | ----------------------------------------- |
-| Old or slow TV browser | Plug in a laptop via HDMI                 |
-| Want karaoke versions  | Turn on the karaoke filter when searching |
-| App UI · English       | Open [/en](https://vkara.vercel.app/en)   |
-| App UI · Vietnamese    | Open [`/`](https://vkara.vercel.app/)     |
-
-## FAQ
-
-**Do I need an account?**  
-No. Join with a room code or QR. Hosts can optionally set a room password.
-
-**Where do the songs come from?**  
-YouTube. Some videos cannot be embedded; vkara skips those. Use of YouTube content is subject to [YouTube’s Terms of Service](https://www.youtube.com/t/terms).
-
-**Is vkara affiliated with YouTube?**  
-No. vkara uses YouTube search and embedded playback, but is not affiliated with or endorsed by YouTube.
-
-**Why two layouts (TV vs phone)?**  
-The player screen is for watching. Phones are for searching and controlling - so nobody hunts for letters on a TV remote.
-
-**Can I host my own copy?**  
-Yes. See [Self-host](#self-host) below or the full guide in [containers/README.md](containers/README.md).
-
-## Copyright and legal notice
-
-vkara is open-source software under the MIT License, intended for personal, non-commercial karaoke via YouTube's embedded player. It does not store, download, or distribute music or video files on its servers. The project does not commercialize content or provide music licensing.
-
-- vkara is not affiliated with YouTube and has no music licensing agreements.
-- Playback runs inside YouTube's iframe; the project does not re-stream content independently.
-- YouTube allows personal, non-commercial viewing and embeddable playback; public commercial use is the responsibility of users and deployers under applicable law and [YouTube's Terms of Service](https://www.youtube.com/t/terms).
-- The project disclaims responsibility when third parties use vkara for commercial purposes without proper authorization.
-
-Self-hosting deployers are responsible for how they configure and operate their instance. End users must comply with YouTube's Terms and copyright law where they live.
-
-Full disclaimer: [docs/DISCLAIMER.md](docs/DISCLAIMER.md) (English), [docs/vi/DISCLAIMER.md](docs/vi/DISCLAIMER.md) (Tiếng Việt).
-
-Copyright complaints, takedown requests, and support: [lehuygiang28@gmail.com](mailto:lehuygiang28@gmail.com)
-
----
-
-## Self-host
-
-The easiest way to run vkara yourself is the **all-in-one Docker image** (`vkara-aio`). It runs the web app and backend together on **port 3000**, with the default setup handled for you.
-
-```bash
-cp containers/aio/.env.example containers/aio/.env
-docker compose --profile aio up --build
+# Controller tests
+bun --cwd apps/control-plane test
 ```
 
-Open http://localhost:3000
+## Current limitations
 
-Pre-built image from Docker Hub:
+- The temporary Firefox extension must be loaded again after Firefox restarts.
+- The controller runs in Terminal and stops with Control-C.
+- Queue state is in memory and is cleared when the controller stops.
+- Updates use `git pull` followed by another build.
+- YouTube page changes may require compatibility maintenance.
 
-```bash
-docker pull lehuygiang28/vkara-aio:latest
-docker run --rm -p 3000:3000 lehuygiang28/vkara-aio:latest
-```
-
-Split web/API, production env, and other profiles: **[containers/README.md](containers/README.md)**.
-
----
-
-## For developers
-
-<details>
-<summary><strong>Local development</strong></summary>
-
-**Requirements:** [Bun](https://bun.sh) ≥ 1.3.13, Redis, Node.js 22+ (for production web builds only).
-
-```bash
-git clone https://github.com/lehuygiang28/vkara.git
-cd vkara
-bun install
-```
-
-Copy env files:
-
-- `apps/api/.env.example` → `apps/api/.env`
-- `apps/web/.env.example` → `apps/web/.env.local`
-
-Start Redis (example):
-
-```bash
-docker run -d --name vkara-redis -p 6379:6379 redis:7-alpine \
-  redis-server --requirepass giang
-```
-
-Run:
-
-```bash
-bun run dev          # web :3000 + API :8000
-bun run dev:web
-bun run dev:api
-```
-
-</details>
-
-<details>
-<summary><strong>Docker images</strong></summary>
-
-| Image                          | Port | Notes                                                |
-| ------------------------------ | ---- | ---------------------------------------------------- |
-| `lehuygiang28/vkara-aio`       | 3000 | Full stack (recommended)                             |
-| `lehuygiang28/vkara-web`       | 3000 | Frontend only                                        |
-| `lehuygiang28/vkara-api`       | 8000 | API only (bring your own Redis)                      |
-| `lehuygiang28/vkara-api-redis` | 8000 | API + Redis in one container; Redis is internal only |
-
-Compose profiles: `aio`, `web`, `api`, `bundle`, `whisper`. See [containers/README.md](containers/README.md).
-
-</details>
-
-<details>
-<summary><strong>Tech stack</strong></summary>
-
-| Layer    | Stack                          |
-| -------- | ------------------------------ |
-| Frontend | Next.js 15, React 19, Tailwind |
-| Backend  | Bun, Elysia                    |
-| State    | Redis                          |
-| Repo     | Bun workspaces, Turborepo      |
-
-Optional voice search: [Whisper STT](containers/whisper-stt/README.md).
-
-</details>
-
-<details>
-<summary><strong>Repository layout</strong></summary>
+## Project layout
 
 ```text
-vkara/
-├── apps/
-│   ├── web/                 frontend
-│   ├── api/                 backend
-│   ├── tizen/               Samsung TV shell (WGT + TizenBrew)
-│   └── android-tv/          Android TV shell (Expo + EAS APK sideload)
-├── packages/
-│   ├── env/                 t3-env + feature flags
-│   ├── validators/          zod WS + HTTP schemas
-│   ├── youtube/             YouTube types + utils
-│   ├── room/                room / WS server types
-│   ├── personalization/     browse ranking profile
-│   ├── redis/               Redis options factory
-│   └── cache-redis/         Redis cache helpers
-├── containers/
-│   ├── aio/                 all-in-one Docker image
-│   ├── api-redis/           API + Redis bundle
-│   └── whisper-stt/         optional voice search
-└── docker-compose.yml
+apps/control-plane/                 local controller and guest web UI
+players/firefox-extension/          Firefox playback provider
+packages/playback-protocol/         shared command and event schemas
+scripts/karaoke-dev.sh              developer setup and launcher
+FRIEND_SETUP.md                     shareable host walkthrough
+DISTRIBUTION_AND_UPDATES.md         future packaging and update notes
 ```
 
-Realtime message shapes live in `packages/validators` (zod); room/YouTube domain types in `packages/room` and `packages/youtube`. Update validators first when changing WS or HTTP contracts.
+## Origin and license
 
-**Samsung TV packaging:** shared shell in `apps/tizen` builds an unsigned **WGT** (Apps2Samsung sideload) and a **TizenBrew** npm module (`@vkara/tv`). See [apps/tizen/README.md](apps/tizen/README.md). Shell releases use tags `tizen-v*` (not Docker `v*`).
+Mansion Karaoke began as a derivative of [vkara](https://github.com/lehuygiang28/vkara) by Lê Huy Giang and retains its MIT license and copyright notice. The local control-plane architecture, Firefox playback provider, guest party workflow, and developer distribution flow have since diverged substantially. See [NOTICE.md](NOTICE.md) for attribution details.
 
-**Android TV packaging:** Expo + `react-native-tvos` shell in `apps/android-tv` builds a sideload **APK** via EAS (no Google Play for now; no local Gradle required). See [apps/android-tv/README.md](apps/android-tv/README.md) and [standalone TV deployment](docs/standalone-tv-deployment.md). Shell releases use tags `android-v*` (not Docker `v*` / `tizen-v*`).
-
-**Scripts:** `bun run dev` · `bun run test` · `bun run typecheck` · `bun run lint` · `bun run build` · `bun run build:tizen` · `bun run build:android-tv` · `bun run format`
-
-**Docs:** [Monorepo architecture](docs/monorepo-architecture.md) · [URL commands / agents](docs/agents/url-commands.md)
-
-</details>
-
-## Contributing
-
-Issues and pull requests welcome. Change `packages/validators` (and related domain packages) when altering API or realtime message shapes.
-
-## Thanks
-
-YouTube search and playback in vkara depend on open-source libraries and their authors:
-
-| Library                                                      | Author                                                           | Used for                                         |
-| ------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------ |
-| [youtubei](https://github.com/SuspiciousLookingOwl/youtubei) | [@SuspiciousLookingOwl](https://github.com/SuspiciousLookingOwl) | Search, video metadata, playlists, Innertube API |
-| [youtube-sr](https://github.com/twlite/youtube-sr)           | [@twlite](https://github.com/twlite)                             | Search suggestions                               |
-| [react-youtube](https://github.com/tjallingt/react-youtube)  | [@tjallingt](https://github.com/tjallingt)                       | YouTube player embed in the web app              |
-
-The Samsung Tizen shell approach was inspired by [@alfrededison](https://github.com/alfrededison)’s
-work in [#5](https://github.com/lehuygiang28/vkara/pull/5) — thank you for sharing that path with the community.
-
-Thank you to the maintainers and contributors of these projects.
-
-## License
-
-MIT - see [LICENSE](LICENSE).
-
----
-
-<p align="center">
-  Made by <a href="https://github.com/lehuygiang28">@lehuygiang28</a><br />
-  From Vietnam with love ♥
-</p>
-
-<p align="center">
-  <a href="https://github.com/lehuygiang28/vkara">github.com/lehuygiang28/vkara</a>
-</p>
+This project does not download or re-stream YouTube media and is not affiliated with or endorsed by YouTube. Users are responsible for complying with YouTube’s terms and applicable copyright law.

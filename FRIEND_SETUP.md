@@ -1,4 +1,4 @@
-# Local Karaoke: Friend Setup Guide
+# Mansion Karaoke: Friend Setup Guide
 
 This is the current developer-preview way to host a karaoke night from a Mac. It runs a small local controller in Terminal and loads the Firefox player as a temporary extension. Guests need only a phone on the same Wi-Fi; they do not install anything.
 
@@ -18,8 +18,8 @@ No Redis, Docker, YouTube API key, or account is required for this local build.
 Open Terminal and run:
 
 ```sh
-git clone https://github.com/jandor-hermes/vkara.git karaoke
-cd karaoke
+git clone https://github.com/jandor-hermes/mansion-karaoke.git
+cd mansion-karaoke
 ./scripts/karaoke-dev.sh run
 ```
 
@@ -39,7 +39,7 @@ Temporary extensions disappear whenever Firefox exits, so repeat these steps aft
 2. Select **This Firefox**.
 3. Select **Load Temporary Add-on…**.
 4. Choose `players/firefox-extension/dist/manifest.json` inside the cloned repository.
-5. Pin the **Local Karaoke Firefox Player** toolbar button if desired.
+5. Pin the **Mansion Karaoke Firefox Player** toolbar button if desired.
 6. Click its toolbar button.
 7. Enter the controller URL and party token printed in Terminal.
 8. Select **Save & start**.
@@ -63,14 +63,14 @@ Stop the session with **Control-C** in Terminal. The queue is currently held in 
 If nothing changed and the build is already present:
 
 ```sh
-cd karaoke
+cd mansion-karaoke
 ./scripts/karaoke-dev.sh start
 ```
 
 After downloading updates, rebuild before starting:
 
 ```sh
-cd karaoke
+cd mansion-karaoke
 git pull --ff-only
 ./scripts/karaoke-dev.sh run
 ```
@@ -116,4 +116,4 @@ Allow autoplay with sound for YouTube in Firefox, then retry the song.
 
 For setup help, send the host the repository link and this file:
 
-<https://github.com/jandor-hermes/vkara/blob/karaoke-app/FRIEND_SETUP.md>
+<https://github.com/jandor-hermes/mansion-karaoke/blob/main/FRIEND_SETUP.md>
