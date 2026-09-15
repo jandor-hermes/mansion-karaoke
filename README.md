@@ -78,7 +78,10 @@
 2. **Phones** - open the same site, enter the code or scan the QR.
 3. **Sing together** - search YouTube, build the queue, skip, pause. Everyone stays in sync.
 
-## Usage
+### Usage
+
+The local Firefox playback agent supports authenticated `POST /control/fullscreen`; it presents the dedicated YouTube window through the Firefox `windows` API rather than relying on remote page `requestFullscreen()` activation. Real Firefox/TV fullscreen behavior remains a manual acceptance check.
+
 
 ### Host (TV / laptop)
 

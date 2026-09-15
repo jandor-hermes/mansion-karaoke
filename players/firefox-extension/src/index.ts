@@ -1,16 +1,17 @@
 import { playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
-export type PlayerState = { tabId: number | null; itemId?: string; videoId?: string; roomId?: string; status: PlayerStatus };
-export type BrowserTabs = { get(id: number): Promise<unknown>; create(options: { url: string; active: boolean }): Promise<{ id?: number }>; update(id: number, options: { url: string; active: boolean }): Promise<unknown>; sendMessage?: (tabId: number, message: unknown) => Promise<unknown> };
+export type PlayerState = { tabId: number | null; windowId?: number | null; itemId?: string; videoId?: string; roomId?: string; status: PlayerStatus };
+export type BrowserTabs = { get(id: number): Promise<{ id?: number; windowId?: number }>; create(options: { url: string; active: boolean }): Promise<{ id?: number; windowId?: number }>; update(id: number, options: { url: string; active: boolean }): Promise<unknown>; sendMessage?: (tabId: number, message: unknown) => Promise<unknown> };
+export type BrowserWindows = { update(id: number, options: { state: 'fullscreen' }): Promise<unknown> };
 export type SendMessage = (tabId: number, message: { type: 'pause' | 'resume' | 'setVolume'; volume?: number }) => Promise<unknown>;
 
-export const createInitialPlayerState = (): PlayerState => ({ tabId: null, status: 'idle' });
+export const createInitialPlayerState = (): PlayerState => ({ tabId: null, windowId: null, status: 'idle' });
 
 const debug = (...args: unknown[]) => console.debug('[karaoke-player]', ...args);
 
 export class CommandRouter {
-    constructor(private readonly tabs: BrowserTabs, private readonly sendMessage: SendMessage = async () => undefined) {}
+    constructor(private readonly tabs: BrowserTabs, private readonly sendMessage: SendMessage = async () => undefined, private readonly windows?: BrowserWindows) {}
 
     async route(input: unknown, state: PlayerState): Promise<void> {
         const command = playbackCommandSchema.parse(input);
@@ -20,15 +21,22 @@ export class CommandRouter {
             if (state.tabId === null) {
                 const tab = await this.tabs.create({ url, active: true });
                 state.tabId = tab.id ?? null;
-                console.debug('[karaoke-player] created YouTube tab', { tabId: state.tabId, url });
+                state.windowId = tab.windowId ?? null;
+                console.debug('[karaoke-player] created YouTube tab', { tabId: state.tabId, windowId: state.windowId, url });
             } else {
-                try { await this.tabs.get(state.tabId); console.debug('[karaoke-player] reusing YouTube tab', { tabId: state.tabId }); await this.tabs.update(state.tabId, { url, active: true }); }
-                catch (error) { console.debug('[karaoke-player] existing tab unavailable; creating YouTube tab', { error }); const tab = await this.tabs.create({ url, active: true }); state.tabId = tab.id ?? null; }
+                try { const existing = await this.tabs.get(state.tabId); state.windowId = existing.windowId ?? state.windowId ?? null; console.debug('[karaoke-player] reusing YouTube tab', { tabId: state.tabId, windowId: state.windowId }); await this.tabs.update(state.tabId, { url, active: true }); }
+                catch (error) { console.debug('[karaoke-player] existing tab unavailable; creating YouTube tab', { error }); const tab = await this.tabs.create({ url, active: true }); state.tabId = tab.id ?? null; state.windowId = tab.windowId ?? null; }
             }
             state.itemId = command.itemId; state.videoId = command.videoId; state.roomId = command.roomId; state.status = 'loading';
             return;
         }
-        if (command.type === 'skip') { state.status = 'ended'; return; }
+        if (command.type === 'skip') { state.status = 'ended'; debug('skip applied'); return; }
+        if (command.type === 'fullscreen') {
+            if (state.windowId == null || !this.windows) { console.error('[karaoke-player] fullscreen failed: dedicated window unavailable'); return; }
+            try { await this.windows.update(state.windowId, { state: 'fullscreen' }); debug('fullscreen applied', { windowId: state.windowId }); }
+            catch (error) { console.error('[karaoke-player] fullscreen failed', { windowId: state.windowId, error }); }
+            return;
+        }
         if (state.tabId === null) return;
         if (command.type === 'pause' || command.type === 'resume' || command.type === 'setVolume') await this.sendMessage(state.tabId, { type: command.type, ...(command.type === 'setVolume' ? { volume: command.volume } : {}) });
     }
