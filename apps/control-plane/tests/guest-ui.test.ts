@@ -62,6 +62,8 @@ describe('guest UI page', () => {
         expect(html).toContain('name-input');
         expect(html).toContain('karaoke-name-party-room');
         expect(html).toContain('requestedBy');
+        expect(html).toContain("new URLSearchParams(location.hash.slice(1)).get('token')");
+        expect(html).toContain('history.replaceState');
         expect(html).toContain('now-playing');            // now playing section
         expect(html).toContain('queue-list');              // queue list
         expect(html).toContain('/search');                 // API wiring

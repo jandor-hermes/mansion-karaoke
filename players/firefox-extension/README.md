@@ -15,4 +15,6 @@ The deterministic build bundles `src/background.ts`, `src/content.ts`, and `src/
 
 The manifest deliberately grants only tabs/storage, loopback controller, and YouTube watch permissions. `npm run firefox:lint` runs `web-ext lint` when that optional CLI is installed; otherwise it reports the manual gate.
 
+The content script shows a small **Scan to join** QR card in the upper-right of the YouTube player, including native fullscreen. It obtains an authenticated LAN join URL from the controller and encodes it locally; no QR data is sent to a third party. The URL fragment carries the shared party token so scanning guests only need to enter their display name. Anyone who can scan the TV can obtain that token and control the party, which is intentional for this trusted-LAN workflow.
+
 The MIT attribution and license are retained at repository root.

@@ -106,6 +106,13 @@ export function createControllerClient(options: { baseUrl: string; token: string
     const fetcher = options.fetcher ?? fetch;
     const headers = { Authorization: `Bearer ${options.token}`, 'Content-Type': 'application/json' };
     return {
+        async joinInfo() {
+            const response = await fetcher(`${baseUrl}/join-info`, { headers, cache: 'no-store' });
+            if (!response.ok) throw new Error(`Join info failed: ${response.status}`);
+            const payload: unknown = await response.json();
+            if (!payload || typeof payload !== 'object' || typeof (payload as { joinUrl?: unknown }).joinUrl !== 'string') throw new Error('Malformed join info response');
+            return payload as { joinUrl: string };
+        },
         async poll(after: number) {
             const response = await fetcher(`${baseUrl}/command?after=${after}`, { headers, cache: 'no-store' });
             if (!response.ok) throw new Error(`Controller poll failed: ${response.status}`);

@@ -89,6 +89,14 @@ export function createControlPlane(options: Options): ControlPlane {
     let server: Server | undefined;
     let url = '';
     const bind = options.bind ?? resolveBindAddress(process.env);
+    const joinUrl = () => {
+        const value = new URL(url);
+        value.hostname = lanIPv4Addresses()[0] ?? '127.0.0.1';
+        value.pathname = '/';
+        value.search = '';
+        value.hash = new URLSearchParams({ token: options.token }).toString();
+        return value.toString();
+    };
 
     const issue = (command: PlaybackCommand) => { commands.push({ sequence: ++sequence, command }); };
     const commandFor = (type: PlaybackCommand['type'], extra: Record<string, unknown> = {}): PlaybackCommand => playbackCommandSchema.parse({
@@ -134,6 +142,7 @@ export function createControlPlane(options: Options): ControlPlane {
         if (request.headers.authorization !== `Bearer ${options.token}`) return send(response, 401, { error: 'unauthorized' });
         const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
+            if (request.method === 'GET' && urlObject.pathname === '/join-info') return send(response, 200, { joinUrl: joinUrl() });
             if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, current, queue, history, sequence });
             if (request.method === 'POST' && urlObject.pathname === '/search') {
                 const value = await body(request) as { query?: unknown; continuation?: unknown };

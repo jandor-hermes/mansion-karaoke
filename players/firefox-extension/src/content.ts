@@ -1,6 +1,7 @@
 /* global browser */
 import { applyPresentation, clickYouTubeFullscreenButton, logPresentationDiagnostics, presentationMessage, activateTheaterMode } from './presentation';
 import { parseLoadVideoCommand, requestPageLoad } from './load-video';
+import { installJoinQr } from './join-qr';
 
 type VideoCommand = { type: 'pause' | 'resume' | 'setVolume' | 'fullscreen' | 'loadVideo'; volume?: number; videoId?: string; position?: number };
 const video = () => document.querySelector('video') as HTMLVideoElement | null;
@@ -23,7 +24,9 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
             ...(type === 'error' ? classifyYouTubeError(document, element) : {}),
         });
     };
+    let joinUrl = '';
     const attach = () => {
+        if (joinUrl) installJoinQr(document, joinUrl);
         const element = video();
         if (!element) {
             console.debug('[karaoke-player] YouTube video element not found', { href: location.href });
@@ -48,6 +51,12 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
     const observer = new MutationObserver(attach);
     observer.observe(document.documentElement, { childList: true, subtree: true });
     attach();
+    void browser.runtime.sendMessage({ type: 'getJoinInfo' }).then((value: unknown) => {
+        if (value && typeof value === 'object' && typeof (value as { joinUrl?: unknown }).joinUrl === 'string') {
+            joinUrl = (value as { joinUrl: string }).joinUrl;
+            installJoinQr(document, joinUrl);
+        }
+    }).catch((error: unknown) => console.error('[karaoke-player] join QR unavailable', error));
     const channel = Math.random().toString(36).slice(2);
     const bridgeNode = document.createElement('span');
     bridgeNode.hidden = true;
