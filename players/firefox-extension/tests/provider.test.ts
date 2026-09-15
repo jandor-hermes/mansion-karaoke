@@ -42,6 +42,17 @@ describe('Firefox command router', () => {
         expect(windows.update).toHaveBeenCalledWith(77, { state: 'fullscreen' });
     });
 
+    it('sends presentation mode to the content tab as well as fullscreening the window', async () => {
+        const tabs: BrowserTabs = { get: vi.fn().mockResolvedValue({ id: 9, windowId: 77 }), create: vi.fn(), update: vi.fn(), sendMessage: vi.fn() };
+        const windows = { update: vi.fn().mockResolvedValue({ id: 77, state: 'fullscreen' }) };
+        const sendMessage = vi.fn().mockResolvedValue(undefined);
+        const router = new CommandRouter(tabs, sendMessage, windows);
+        const state = { ...createInitialPlayerState(), tabId: 9, windowId: 77 };
+        await router.route({ type: 'fullscreen', commandId: 'c3', roomId: 'r1', issuedAt: 3 }, state);
+        expect(sendMessage).toHaveBeenCalledWith(9, { type: 'fullscreen' });
+        expect(windows.update).toHaveBeenCalledWith(77, { state: 'fullscreen' });
+    });
+
     it('routes controls to the content tab and reports skipped state', async () => {
         const sendMessage = vi.fn().mockResolvedValue(undefined);
         const router = new CommandRouter({ get: vi.fn(), create: vi.fn(), update: vi.fn() }, sendMessage);
