@@ -134,6 +134,45 @@ describe('background lifecycle', () => {
         } finally { globalThis.fetch = originalFetch; }
     });
 
+    it('starts a session from the extension popup with newly supplied configuration', async () => {
+        const listeners: Array<(message: unknown) => unknown> = [];
+        const browserApi = {
+            tabs: {
+                query: vi.fn().mockResolvedValue([]),
+                get: vi.fn(),
+                create: vi.fn().mockResolvedValue({ id: 72, windowId: 12 }),
+                update: vi.fn(),
+                sendMessage: vi.fn(),
+                onRemoved: { addListener: vi.fn() },
+            },
+            runtime: {
+                getURL: vi.fn((path: string) => `moz-extension://test/${path}`),
+                sendMessage: vi.fn(),
+                onMessage: { addListener: (listener: (message: unknown) => unknown) => listeners.push(listener) },
+            },
+            storage: {
+                local: {
+                    get: vi.fn().mockResolvedValue({ baseUrl: 'http://127.0.0.1:3010', token: '' }),
+                    set: vi.fn(),
+                },
+                onChanged: { addListener: vi.fn() },
+            },
+        } as any;
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ command: null, sequence: 0 }), { status: 200 }));
+        try {
+            const background = await startBackground(browserApi);
+            const result = await listeners[0]({
+                type: 'startSession',
+                config: { baseUrl: 'http://127.0.0.1:3010', token: 'new-token' },
+            });
+            expect(result).toEqual({ ok: true, tabId: 72 });
+            expect(browserApi.tabs.create).toHaveBeenCalledWith({ url: 'moz-extension://test/display.html', active: true });
+            expect(background.state).toMatchObject({ tabId: 72, windowId: 12 });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
     it('starts polling after a token is saved and never creates duplicate timers', async () => {
         const onMessage: Array<(message: unknown) => void> = [];
         const onChanged: Array<(changes: Record<string, { newValue?: unknown }>) => void> = [];

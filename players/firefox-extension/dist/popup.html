@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Karaoke session</title>
+  <style>
+    :root{color-scheme:dark;font:14px system-ui,sans-serif}*{box-sizing:border-box}body{width:350px;margin:0;padding:18px;color:#f7f7f8;background:#17171a}h1{font-size:19px;margin:0 0 5px}p{color:#aaaab2;margin:0 0 17px;line-height:1.4}label{display:block;font-size:12px;font-weight:700;margin:12px 0 6px}input{width:100%;padding:10px 11px;border:1px solid #45454d;border-radius:8px;background:#242428;color:#fff;font:inherit}input:focus{outline:2px solid #a67cff;outline-offset:1px}.actions{display:grid;grid-template-columns:1fr 1.45fr;gap:8px;margin-top:16px}button{padding:10px 8px;border:1px solid #505057;border-radius:8px;background:#29292e;color:#fff;font:inherit;font-weight:700;cursor:pointer}button.primary{border-color:#7c4dff;background:#7c4dff}button:hover{filter:brightness(1.1)}#status{min-height:20px;margin:12px 0 0;color:#a9e8bd;font-size:12px}#status[data-error="true"]{color:#ffaaa5}.hint{font-size:11px;color:#85858e;margin-top:5px}
+  </style>
+</head>
+<body>
+  <h1>Karaoke session</h1>
+  <p>Configure the local controller, then open or focus the TV join screen.</p>
+  <form id="session-form">
+    <label for="base-url">Controller URL</label>
+    <input id="base-url" name="baseUrl" type="url" inputmode="url" autocomplete="url" required>
+    <label for="token">Party token / authorization key</label>
+    <input id="token" name="token" type="text" autocomplete="off" spellcheck="false">
+    <div class="hint">Kept only in Firefox extension storage.</div>
+    <div class="actions">
+      <button type="submit" value="save">Save</button>
+      <button class="primary" type="submit" value="start">Save &amp; start</button>
+    </div>
+    <div id="status" role="status" aria-live="polite"></div>
+  </form>
+  <script src="popup.js"></script>
+</body>
+</html>
