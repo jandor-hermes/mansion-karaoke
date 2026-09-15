@@ -16,7 +16,7 @@ const distDir = path.join(extensionDir, 'dist');
 
 await fs.rm(distDir, { recursive: true, force: true });
 await fs.mkdir(distDir, { recursive: true });
-for (const entry of ['background', 'content', 'options']) {
+for (const entry of ['background', 'content', 'options', 'page-bridge']) {
   await build({
     entryPoints: [path.join(extensionDir, 'src', `${entry}.ts`)],
     outfile: path.join(distDir, `${entry}.js`),

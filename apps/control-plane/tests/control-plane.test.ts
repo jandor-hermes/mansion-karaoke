@@ -55,6 +55,39 @@ describe('local control-plane vertical slice', () => {
         expect((await json(await request(plane, '/status'))).queue).toHaveLength(1);
     });
 
+    it('retains search metadata in queue state without adding it to playback commands', async () => {
+        const plane = await start();
+        const rich = {
+            ...item('first'),
+            title: 'First Song',
+            channel: 'Singer',
+            duration: '3:45',
+            thumbnail: 'https://img.example/first.jpg',
+        };
+        const requestItem = { ...rich, clientOnly: 'discard me' };
+        expect((await request(plane, '/queue', { method: 'POST', body: JSON.stringify(requestItem) })).status).toBe(201);
+        const status = await json(await request(plane, '/status'));
+        expect(status.current).toEqual(rich);
+        const play = (await json(await request(plane, '/command?after=0'))).command;
+        expect(play).toMatchObject({ type: 'play', itemId: rich.itemId, videoId: rich.videoId });
+        expect(play).not.toHaveProperty('title');
+        expect(play).not.toHaveProperty('channel');
+        expect(play).not.toHaveProperty('duration');
+        expect(play).not.toHaveProperty('thumbnail');
+    });
+
+    it('rejects malformed optional queue metadata consistently', async () => {
+        const plane = await start();
+        for (const field of ['title', 'channel', 'duration', 'thumbnail']) {
+            const response = await request(plane, '/queue', {
+                method: 'POST',
+                body: JSON.stringify({ ...item(field, `item-${field}`), [field]: 42 }),
+            });
+            expect(response.status, field).toBe(400);
+        }
+        expect((await json(await request(plane, '/status'))).current).toBeNull();
+    });
+
     it('advances on ended, then skip advances to the next queued item', async () => {
         const plane = await start();
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
@@ -92,6 +125,80 @@ describe('local control-plane vertical slice', () => {
         const status = await json(await request(plane, '/status'));
         expect(status.current.videoId).toBe('first');
         expect(status.queue).toEqual([]);
+    });
+});
+
+describe('phone song actions', () => {
+    it('inserts a rich play-next item at the front of the waiting queue', async () => {
+        const plane = await start();
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('second')) });
+        const nextItem = { ...item('next'), title: 'Next Song', channel: 'Next Singer', duration: '4:01', thumbnail: 'https://img.example/next.jpg' };
+
+        const response = await request(plane, '/queue/next', { method: 'POST', body: JSON.stringify(nextItem) });
+
+        expect(response.status).toBe(201);
+        expect(await json(response)).toMatchObject({ current: item('first'), queue: [nextItem, item('second')] });
+        expect((await json(await request(plane, '/status'))).queue).toEqual([nextItem, item('second')]);
+    });
+    it('starts a play-next item immediately while idle', async () => {
+        const plane = await start();
+        const nextItem = { ...item('next'), title: 'Next Song' };
+
+        const response = await request(plane, '/queue/next', { method: 'POST', body: JSON.stringify(nextItem) });
+
+        expect(response.status).toBe(201);
+        expect(await json(response)).toMatchObject({ current: nextItem, queue: [] });
+        const play = await json(await request(plane, '/command?after=0'));
+        expect(play.command).toMatchObject({ type: 'play', itemId: nextItem.itemId, videoId: nextItem.videoId });
+    });
+    it('replaces the current song now without changing the waiting queue', async () => {
+        const plane = await start();
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('second')) });
+        const nowItem = { ...item('now'), title: 'Play Me Now', channel: 'Headliner' };
+
+        const response = await request(plane, '/queue/play-now', { method: 'POST', body: JSON.stringify(nowItem) });
+
+        expect(response.status).toBe(201);
+        expect(await json(response)).toMatchObject({ current: nowItem, queue: [item('second')] });
+        const interrupt = await json(await request(plane, '/command?after=1'));
+        expect(interrupt.command).toMatchObject({ type: 'skip' });
+        const nextCommand = await json(await request(plane, `/command?after=${interrupt.sequence}`));
+        expect(nextCommand.command).toMatchObject({ type: 'play', itemId: nowItem.itemId, videoId: nowItem.videoId });
+        expect(nextCommand.command).not.toHaveProperty('title');
+    });
+    it('treats duplicate item IDs as idempotent for immediate actions', async () => {
+        const plane = await start();
+        const first = { ...item('first'), title: 'Original' };
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(first) });
+
+        const playNext = await request(plane, '/queue/next', { method: 'POST', body: JSON.stringify({ ...first, title: 'Changed' }) });
+        const playNow = await request(plane, '/queue/play-now', { method: 'POST', body: JSON.stringify({ ...first, title: 'Changed Again' }) });
+
+        expect(playNext.status).toBe(200);
+        expect(playNow.status).toBe(200);
+        expect(await json(playNow)).toMatchObject({ current: first, queue: [] });
+        expect((await json(await request(plane, '/command?after=1'))).command).toBeNull();
+    });
+});
+
+describe('autosuggestions', () => {
+    it('serves at most eight suggestions from an injected adapter', async () => {
+        const queries: string[] = [];
+        const plane = createControlPlane({
+            token: 'test-token',
+            roomId: 'room-1',
+            suggest: { suggest: async (query: string) => { queries.push(query); return Array.from({ length: 10 }, (_, index) => `${query} ${index}`); } },
+        });
+        await plane.listen(0);
+        planes.push(plane);
+
+        const response = await request(plane, '/suggest?q=queen%20karaoke');
+
+        expect(response.status).toBe(200);
+        expect(await json(response)).toEqual({ suggestions: Array.from({ length: 8 }, (_, index) => `queen karaoke ${index}`) });
+        expect(queries).toEqual(['queen karaoke']);
     });
 });
 

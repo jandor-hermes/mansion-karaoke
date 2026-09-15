@@ -6,7 +6,7 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
   var external_exports = {};
   __export(external_exports, {
     BRAND: () => BRAND,
@@ -118,7 +118,7 @@
     void: () => voidType
   });
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
   var util;
   (function(util2) {
     util2.assertEqual = (_) => {
@@ -252,7 +252,7 @@
     }
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
   var ZodIssueCode = util.arrayToEnum([
     "invalid_type",
     "invalid_literal",
@@ -370,7 +370,7 @@
     return error;
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
   var errorMap = (issue, _ctx) => {
     let message;
     switch (issue.code) {
@@ -473,7 +473,7 @@
   };
   var en_default = errorMap;
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
   var overrideErrorMap = en_default;
   function setErrorMap(map) {
     overrideErrorMap = map;
@@ -482,7 +482,7 @@
     return overrideErrorMap;
   }
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
   var makeIssue = (params) => {
     const { data, path, errorMaps, issueData } = params;
     const fullPath = [...path, ...issueData.path || []];
@@ -592,14 +592,14 @@
   var isValid = (x) => x.status === "valid";
   var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
   var errorUtil;
   (function(errorUtil2) {
     errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
     errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
   })(errorUtil || (errorUtil = {}));
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
   var ParseInputLazyPath = class {
     constructor(parent, value, path, key) {
       this._cachedPath = [];
@@ -4047,7 +4047,7 @@
   };
   var NEVER = INVALID;
 
-  // packages/playback-protocol/src/index.ts
+  // ../../packages/playback-protocol/src/index.ts
   var nonEmptyString = external_exports.string().trim().min(1);
   var timestamp = external_exports.number().finite().int().nonnegative();
   var sequence = external_exports.number().int().positive();
@@ -4097,14 +4097,51 @@
     })
   ]);
 
-  // players/firefox-extension/src/index.ts
+  // src/load-video.ts
+  var YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+  function parseLoadVideoResult(value) {
+    if (!value || typeof value !== "object") return null;
+    const candidate = value;
+    if (typeof candidate.ok !== "boolean" || typeof candidate.videoId !== "string" || !YOUTUBE_VIDEO_ID.test(candidate.videoId)) return null;
+    if (typeof candidate.fullscreenRetained !== "boolean") return null;
+    if (candidate.ok && candidate.mode !== "yt-navigate" && candidate.mode !== "player-api") return null;
+    if (candidate.mode !== void 0 && candidate.mode !== "yt-navigate" && candidate.mode !== "player-api") return null;
+    if (candidate.error !== void 0 && typeof candidate.error !== "string") return null;
+    return {
+      ok: candidate.ok,
+      ...candidate.mode ? { mode: candidate.mode } : {},
+      videoId: candidate.videoId,
+      fullscreenRetained: candidate.fullscreenRetained,
+      ...candidate.error ? { error: candidate.error } : {}
+    };
+  }
+
+  // src/index.ts
+  function isVerifiedLoad(result, videoId) {
+    const value = parseLoadVideoResult(result);
+    return value?.ok === true && value.videoId === videoId;
+  }
   var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle" });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
-    constructor(tabs, sendMessage = async () => void 0, windows) {
+    constructor(tabs, sendMessage = async () => void 0, windows, loadTimeoutMs = 2500) {
       this.tabs = tabs;
       this.sendMessage = sendMessage;
       this.windows = windows;
+      this.loadTimeoutMs = loadTimeoutMs;
+    }
+    async sendLoadVideo(tabId, videoId, position) {
+      let timeout;
+      try {
+        return await Promise.race([
+          this.sendMessage(tabId, { type: "loadVideo", videoId, position }),
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error("same-document load timed out")), this.loadTimeoutMs);
+          })
+        ]);
+      } finally {
+        if (timeout !== void 0) clearTimeout(timeout);
+      }
     }
     async route(input, state) {
       const command = playbackCommandSchema.parse(input);
@@ -4120,14 +4157,29 @@
           try {
             const existing = await this.tabs.get(state.tabId);
             state.windowId = existing.windowId ?? state.windowId ?? null;
-            console.debug("[karaoke-player] reusing YouTube tab", { tabId: state.tabId, windowId: state.windowId });
-            await this.tabs.update(state.tabId, { url, active: true });
           } catch (error) {
             console.debug("[karaoke-player] existing tab unavailable; creating YouTube tab", { error });
             const tab = await this.tabs.create({ url, active: true });
             state.tabId = tab.id ?? null;
             state.windowId = tab.windowId ?? null;
+            state.itemId = command.itemId;
+            state.videoId = command.videoId;
+            state.roomId = command.roomId;
+            state.status = "loading";
+            return;
           }
+          state.itemId = command.itemId;
+          state.videoId = command.videoId;
+          state.roomId = command.roomId;
+          state.status = "loading";
+          console.debug("[karaoke-player] reusing YouTube tab", { tabId: state.tabId, windowId: state.windowId });
+          try {
+            const result = await this.sendLoadVideo(state.tabId, command.videoId, command.position);
+            if (isVerifiedLoad(result, command.videoId)) return;
+          } catch (error) {
+            console.debug("[karaoke-player] same-document load failed; using full navigation", { error });
+          }
+          await this.tabs.update(state.tabId, { url, active: true });
         }
         state.itemId = command.itemId;
         state.videoId = command.videoId;
@@ -4162,7 +4214,8 @@
         return;
       }
       if (state.tabId === null) return;
-      if (command.type === "pause" || command.type === "resume" || command.type === "setVolume") await this.sendMessage(state.tabId, { type: command.type, ...command.type === "setVolume" ? { volume: command.volume } : {} });
+      if (command.type === "pause" || command.type === "resume") await this.sendMessage(state.tabId, { type: command.type });
+      if (command.type === "setVolume") await this.sendMessage(state.tabId, { type: "setVolume", volume: command.volume });
     }
   };
   function createControllerClient(options) {
@@ -4187,7 +4240,7 @@
     };
   }
 
-  // players/firefox-extension/src/events.ts
+  // src/events.ts
   var DOM_EVENT_TYPES = {
     loadedmetadata: "ready",
     ready: "ready",
@@ -4221,7 +4274,7 @@
     return playbackEventSchema.parse(event);
   }
 
-  // players/firefox-extension/src/config.ts
+  // src/config.ts
   var DEFAULT_CONTROLLER_URL = "http://127.0.0.1:3010";
   function parseStoredConfig(value) {
     if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "" };
@@ -4232,7 +4285,7 @@
     };
   }
 
-  // players/firefox-extension/src/background.ts
+  // src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);

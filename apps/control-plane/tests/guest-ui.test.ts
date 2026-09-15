@@ -69,6 +69,16 @@ describe('guest UI page', () => {
         expect(html).toContain('queue-remove');           // button markers
         expect(html).toContain('queue-up');
         expect(html).toContain('queue-down');
+        expect(html).toContain('song-actions');
+        expect(html).toContain('action-add');
+        expect(html).toContain('action-next');
+        expect(html).toContain('action-now');
+        expect(html).toContain('play-now-confirm');
+        expect(html).toContain('/queue/next');
+        expect(html).toContain('/queue/play-now');
+        expect(html).toContain('/suggest?q=');
+        expect(html).toContain('search-suggestions');
+        expect(html).toContain('karaoke-recent-searches');
         expect(html).toContain('localStorage');            // token storage
         expect(html).toContain('party-room');              // room name in header
         expect(html).toContain('viewport');                // phone-friendly

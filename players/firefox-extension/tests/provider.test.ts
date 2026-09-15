@@ -9,22 +9,66 @@ import {
 } from '../src';
 
 describe('Firefox command router', () => {
-    it('creates one dedicated tab and reuses it for play commands', async () => {
+    it('switches a subsequent song in the existing document after verified content load', async () => {
+        const state = createInitialPlayerState();
+        const sendMessage = vi.fn(async (_tabId: number, message: { type: string; videoId?: string }) => {
+            expect(state.itemId).toBe('i2');
+            expect(state.videoId).toBe('dQw4w9WgXcQ');
+            return { ok: true, mode: 'yt-navigate', videoId: message.videoId, fullscreenRetained: true };
+        });
         const tabs: BrowserTabs = {
             get: vi.fn().mockResolvedValue({ id: 41 }),
             create: vi.fn().mockResolvedValue({ id: 41 }),
             update: vi.fn().mockResolvedValue({ id: 41 }),
         };
-        const router = new CommandRouter(tabs);
-        const state = createInitialPlayerState();
-        const play = { type: 'play' as const, commandId: 'c1', roomId: 'r1', issuedAt: 1, itemId: 'i1', videoId: 'abc', position: 4 };
+        const router = new CommandRouter(tabs, sendMessage);
+        const play = { type: 'play' as const, commandId: 'c1', roomId: 'r1', issuedAt: 1, itemId: 'i1', videoId: 'M7lc1UVf-VE', position: 4 };
 
         await router.route(play, state);
-        await router.route({ ...play, commandId: 'c2', videoId: 'def' }, state);
+        await router.route({ ...play, commandId: 'c2', itemId: 'i2', videoId: 'dQw4w9WgXcQ', position: 7 }, state);
 
         expect(tabs.create).toHaveBeenCalledTimes(1);
-        expect(tabs.update).toHaveBeenCalledWith(41, { url: 'https://www.youtube.com/watch?v=def', active: true });
+        expect(sendMessage).toHaveBeenCalledWith(41, { type: 'loadVideo', videoId: 'dQw4w9WgXcQ', position: 7 });
+        expect(tabs.update).not.toHaveBeenCalled();
         expect(state.tabId).toBe(41);
+    });
+
+    it('falls back to full navigation when same-document loading rejects', async () => {
+        const tabs: BrowserTabs = {
+            get: vi.fn().mockResolvedValue({ id: 41 }),
+            create: vi.fn().mockResolvedValue({ id: 41 }),
+            update: vi.fn().mockResolvedValue({ id: 41 }),
+        };
+        const sendMessage = vi.fn().mockRejectedValue(new Error('content script unavailable'));
+        const router = new CommandRouter(tabs, sendMessage);
+        const state: PlayerState = { ...createInitialPlayerState(), tabId: 41, itemId: 'i1', videoId: 'M7lc1UVf-VE' };
+
+        await router.route({ type: 'play', commandId: 'c2', roomId: 'r1', issuedAt: 2, itemId: 'i2', videoId: 'dQw4w9WgXcQ', position: 7 }, state);
+
+        expect(tabs.update).toHaveBeenCalledWith(41, { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', active: true });
+        expect(tabs.create).not.toHaveBeenCalled();
+    });
+
+    it('falls back to full navigation when same-document loading times out', async () => {
+        vi.useFakeTimers();
+        try {
+            const tabs: BrowserTabs = {
+                get: vi.fn().mockResolvedValue({ id: 41 }),
+                create: vi.fn(),
+                update: vi.fn().mockResolvedValue({ id: 41 }),
+            };
+            const sendMessage = vi.fn(() => new Promise<never>(() => undefined));
+            const router = new CommandRouter(tabs, sendMessage, undefined, 25);
+            const state: PlayerState = { ...createInitialPlayerState(), tabId: 41 };
+
+            const routed = router.route({ type: 'play', commandId: 'c2', roomId: 'r1', issuedAt: 2, itemId: 'i2', videoId: 'dQw4w9WgXcQ', position: 7 }, state);
+            await vi.advanceTimersByTimeAsync(25);
+            await routed;
+
+            expect(tabs.update).toHaveBeenCalledWith(41, { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', active: true });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('tracks the dedicated window id for later fullscreen use', async () => {

@@ -7,6 +7,6 @@ declare const browser: {
         sendMessage(tabId: number, message: unknown): Promise<unknown>;
         onRemoved: { addListener(listener: (tabId: number) => void): void };
     };
-    runtime: { sendMessage(message: unknown): Promise<unknown>; onMessage: { addListener(listener: (message: unknown) => void): void } };
+    runtime: { getURL(path: string): string; sendMessage(message: unknown): Promise<unknown>; onMessage: { addListener(listener: (message: unknown) => unknown): void } };
     storage: { local: { get(keys?: string[]): Promise<unknown>; set(items: Record<string, unknown>): Promise<void> }; onChanged?: { addListener(listener: (changes: Record<string, { newValue?: unknown }>) => void): void } };
 };

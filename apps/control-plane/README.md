@@ -24,7 +24,9 @@ CORS: the control plane allows the Firefox extension origin plus same-LAN `http:
 
 ## API
 
-- `POST /queue` — JSON `{ "itemId": "song-1", "videoId": "YouTubeId" }` (duplicate item IDs are idempotent)
+- `POST /queue` — enqueue a song; accepts `{ "itemId": "song-1", "videoId": "YouTubeId", "title": "optional", "channel": "optional", "duration": "optional", "thumbnail": "optional" }` (duplicate item IDs are idempotent)
+- `POST /queue/next` — put a song at the front of the waiting queue; starts immediately when idle
+- `POST /queue/play-now` — interrupt and play a song immediately while preserving the waiting queue
 - `POST /queue/remove` — JSON `{ "itemId": "song-1" }`; removes a queued item and returns `{ "queue": [...] }`. Returns `409` for the currently playing item (skip instead) and `404` if the item is not queued.
 - `POST /queue/move` — JSON `{ "itemId": "song-1", "position": 0 }`; 0-based index within the remaining queue, invalid positions are clamped. Returns `400` for the currently playing item or an unknown itemId, plus the updated `{ "queue": [...] }` on success.
 - `GET /command?after=<sequence>` — returns the next command after the provider's last applied sequence, or `{ command: null, sequence }`
@@ -33,6 +35,7 @@ CORS: the control plane allows the Firefox extension origin plus same-LAN `http:
 - `POST /control/volume` — JSON `{ "volume": 0.0..1.0 }`
 - `GET /status` — current item, queued items, and command sequence
 - `POST /search` — JSON `{ "query": "karaoke", "continuation": "optional-token" }`; delegates to an injected search adapter. Without one, returns `503 { "error": "search_not_configured" }`.
+- `GET /suggest?q=...` — no-key YouTube autocomplete suggestions; authenticated like the other API routes.
 
 ### Search integration seam
 

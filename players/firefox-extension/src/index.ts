@@ -1,17 +1,46 @@
 import { playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src';
+import { parseLoadVideoResult, type LoadVideoCommand, type LoadVideoResult } from './load-video';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
 export type PlayerState = { tabId: number | null; windowId?: number | null; itemId?: string; videoId?: string; roomId?: string; status: PlayerStatus };
 export type BrowserTabs = { get(id: number): Promise<{ id?: number; windowId?: number }>; create(options: { url: string; active: boolean }): Promise<{ id?: number; windowId?: number }>; update(id: number, options: { url: string; active: boolean }): Promise<unknown>; sendMessage?: (tabId: number, message: unknown) => Promise<unknown> };
 export type BrowserWindows = { update(id: number, options: { state: 'fullscreen' }): Promise<unknown> };
-export type SendMessage = (tabId: number, message: { type: 'pause' | 'resume' | 'setVolume' | 'fullscreen'; volume?: number }) => Promise<unknown>;
+export type ContentCommand =
+    | { type: 'pause' | 'resume' | 'fullscreen' }
+    | { type: 'setVolume'; volume: number }
+    | LoadVideoCommand;
+export type SendMessage = (tabId: number, message: ContentCommand) => Promise<unknown>;
+
+function isVerifiedLoad(result: unknown, videoId: string): result is LoadVideoResult {
+    const value = parseLoadVideoResult(result);
+    return value?.ok === true && value.videoId === videoId;
+}
 
 export const createInitialPlayerState = (): PlayerState => ({ tabId: null, windowId: null, status: 'idle' });
 
 const debug = (...args: unknown[]) => console.debug('[karaoke-player]', ...args);
 
 export class CommandRouter {
-    constructor(private readonly tabs: BrowserTabs, private readonly sendMessage: SendMessage = async () => undefined, private readonly windows?: BrowserWindows) {}
+    constructor(
+        private readonly tabs: BrowserTabs,
+        private readonly sendMessage: SendMessage = async () => undefined,
+        private readonly windows?: BrowserWindows,
+        private readonly loadTimeoutMs = 2500,
+    ) {}
+
+    private async sendLoadVideo(tabId: number, videoId: string, position: number): Promise<unknown> {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([
+                this.sendMessage(tabId, { type: 'loadVideo', videoId, position }),
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error('same-document load timed out')), this.loadTimeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timeout !== undefined) clearTimeout(timeout);
+        }
+    }
 
     async route(input: unknown, state: PlayerState): Promise<void> {
         const command = playbackCommandSchema.parse(input);
@@ -24,8 +53,32 @@ export class CommandRouter {
                 state.windowId = tab.windowId ?? null;
                 console.debug('[karaoke-player] created YouTube tab', { tabId: state.tabId, windowId: state.windowId, url });
             } else {
-                try { const existing = await this.tabs.get(state.tabId); state.windowId = existing.windowId ?? state.windowId ?? null; console.debug('[karaoke-player] reusing YouTube tab', { tabId: state.tabId, windowId: state.windowId }); await this.tabs.update(state.tabId, { url, active: true }); }
-                catch (error) { console.debug('[karaoke-player] existing tab unavailable; creating YouTube tab', { error }); const tab = await this.tabs.create({ url, active: true }); state.tabId = tab.id ?? null; state.windowId = tab.windowId ?? null; }
+                try {
+                    const existing = await this.tabs.get(state.tabId);
+                    state.windowId = existing.windowId ?? state.windowId ?? null;
+                } catch (error) {
+                    console.debug('[karaoke-player] existing tab unavailable; creating YouTube tab', { error });
+                    const tab = await this.tabs.create({ url, active: true });
+                    state.tabId = tab.id ?? null;
+                    state.windowId = tab.windowId ?? null;
+                    state.itemId = command.itemId;
+                    state.videoId = command.videoId;
+                    state.roomId = command.roomId;
+                    state.status = 'loading';
+                    return;
+                }
+                state.itemId = command.itemId;
+                state.videoId = command.videoId;
+                state.roomId = command.roomId;
+                state.status = 'loading';
+                console.debug('[karaoke-player] reusing YouTube tab', { tabId: state.tabId, windowId: state.windowId });
+                try {
+                    const result = await this.sendLoadVideo(state.tabId, command.videoId, command.position);
+                    if (isVerifiedLoad(result, command.videoId)) return;
+                } catch (error) {
+                    console.debug('[karaoke-player] same-document load failed; using full navigation', { error });
+                }
+                await this.tabs.update(state.tabId, { url, active: true });
             }
             state.itemId = command.itemId; state.videoId = command.videoId; state.roomId = command.roomId; state.status = 'loading';
             return;
@@ -42,7 +95,8 @@ export class CommandRouter {
             return;
         }
         if (state.tabId === null) return;
-        if (command.type === 'pause' || command.type === 'resume' || command.type === 'setVolume') await this.sendMessage(state.tabId, { type: command.type, ...(command.type === 'setVolume' ? { volume: command.volume } : {}) });
+        if (command.type === 'pause' || command.type === 'resume') await this.sendMessage(state.tabId, { type: command.type });
+        if (command.type === 'setVolume') await this.sendMessage(state.tabId, { type: 'setVolume', volume: command.volume });
     }
 }
 

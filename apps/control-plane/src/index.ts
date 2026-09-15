@@ -6,8 +6,31 @@ import { createUnavailableSearchAdapter, type SearchAdapter } from './search.js'
 import { guestPage } from './guest-ui.js';
 
 export type ControlPlane = { url: string; bind: string; listen(port: number): Promise<void>; close(): Promise<void> };
-type QueueItem = { itemId: string; videoId: string };
-type Options = { token: string; roomId: string; search?: SearchAdapter; bind?: string };
+export type QueueItem = {
+    itemId: string;
+    videoId: string;
+    title?: string;
+    channel?: string;
+    duration?: string;
+    thumbnail?: string;
+};
+export type SuggestionAdapter = { suggest(query: string): Promise<string[]> };
+type Options = { token: string; roomId: string; search?: SearchAdapter; suggest?: SuggestionAdapter; bind?: string };
+
+const queueMetadataFields = ['title', 'channel', 'duration', 'thumbnail'] as const;
+
+function parseQueueItem(value: unknown): QueueItem | null {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as Record<string, unknown>;
+    if (typeof candidate.itemId !== 'string' || candidate.itemId.length === 0
+        || typeof candidate.videoId !== 'string' || candidate.videoId.length === 0) return null;
+    const item: QueueItem = { itemId: candidate.itemId, videoId: candidate.videoId };
+    for (const field of queueMetadataFields) {
+        if (candidate[field] !== undefined && typeof candidate[field] !== 'string') return null;
+        if (typeof candidate[field] === 'string') item[field] = candidate[field];
+    }
+    return item;
+}
 
 /** True for private IPv4 hostnames like 192.168.4.31 or 10.0.0.5 (no port validation). */
 function isPrivateIpv4Hostname(hostname: string): boolean {
@@ -56,6 +79,7 @@ export function lanIPv4Addresses(): string[] {
 
 export function createControlPlane(options: Options): ControlPlane {
     const search = options.search ?? createUnavailableSearchAdapter();
+    const suggest = options.suggest;
     const queue: QueueItem[] = [];
     const commands: Array<{ sequence: number; command: PlaybackCommand }> = [];
     let current: QueueItem | null = null;
@@ -72,6 +96,7 @@ export function createControlPlane(options: Options): ControlPlane {
         current = queue.shift() ?? null;
         if (current) issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
     };
+    const hasItemId = (itemId: string) => current?.itemId === itemId || queue.some((item) => item.itemId === itemId);
     const skip = () => { if (current) { issue(commandFor('skip')); current = null; startNext(); } };
     const body = async (request: IncomingMessage) => {
         let data = ''; for await (const chunk of request) data += chunk;
@@ -115,17 +140,52 @@ export function createControlPlane(options: Options): ControlPlane {
                     return send(response, 502, { error: 'search_upstream_failed' });
                 }
             }
+            if (request.method === 'GET' && urlObject.pathname === '/suggest') {
+                const query = (urlObject.searchParams.get('q') ?? '').trim();
+                if (!query) return send(response, 200, { suggestions: [] });
+                if (!suggest) return send(response, 503, { error: 'suggest_not_configured' });
+                try {
+                    const seen = new Set<string>();
+                    const suggestions = (await suggest.suggest(query)).filter((value) => {
+                        if (typeof value !== 'string' || !value.trim()) return false;
+                        const normalized = value.trim().toLowerCase();
+                        if (seen.has(normalized)) return false;
+                        seen.add(normalized);
+                        return true;
+                    }).slice(0, 8);
+                    return send(response, 200, { suggestions });
+                } catch {
+                    return send(response, 502, { error: 'suggest_upstream_failed' });
+                }
+            }
             if (request.method === 'GET' && urlObject.pathname === '/command') {
                 const after = Number(urlObject.searchParams.get('after') ?? 0);
                 const next = commands.find((entry) => entry.sequence > after);
                 return send(response, 200, next ? next : { command: null, sequence });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue') {
-                const value = await body(request) as QueueItem;
-                if (!value.itemId || !value.videoId) return send(response, 400, { error: 'itemId and videoId required' });
+                const value = parseQueueItem(await body(request));
+                if (!value) return send(response, 400, { error: 'itemId and videoId required' });
                 if (current?.itemId === value.itemId || queue.some((item) => item.itemId === value.itemId)) return send(response, 200, value);
                 const wasIdle = !current; queue.push(value); if (wasIdle) startNext();
                 return send(response, 201, value);
+            }
+            if (request.method === 'POST' && urlObject.pathname === '/queue/next') {
+                const value = parseQueueItem(await body(request));
+                if (!value) return send(response, 400, { error: 'valid itemId, videoId, and string metadata required' });
+                if (hasItemId(value.itemId)) return send(response, 200, { current, queue });
+                queue.unshift(value);
+                if (!current) startNext();
+                return send(response, 201, { current, queue });
+            }
+            if (request.method === 'POST' && urlObject.pathname === '/queue/play-now') {
+                const value = parseQueueItem(await body(request));
+                if (!value) return send(response, 400, { error: 'valid itemId, videoId, and string metadata required' });
+                if (hasItemId(value.itemId)) return send(response, 200, { current, queue });
+                if (current) issue(commandFor('skip'));
+                current = value;
+                issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
+                return send(response, 201, { current, queue });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/remove') {
                 const value = await body(request) as { itemId?: unknown };
