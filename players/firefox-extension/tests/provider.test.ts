@@ -27,7 +27,7 @@ describe('Firefox command router', () => {
         expect(state.tabId).toBe(41);
     });
 
-    it('tracks the dedicated window id but does not change the Firefox window', async () => {
+    it('tracks the dedicated window id for later fullscreen use', async () => {
         const tabs: BrowserTabs = {
             get: vi.fn().mockResolvedValue({ id: 9, windowId: 77 }),
             create: vi.fn().mockResolvedValue({ id: 9, windowId: 77 }),
@@ -39,19 +39,19 @@ describe('Firefox command router', () => {
         await router.route({ type: 'play', commandId: 'c1', roomId: 'r1', issuedAt: 1, itemId: 'i1', videoId: 'abc', position: 0 }, state);
         await router.route({ type: 'fullscreen', commandId: 'c2', roomId: 'r1', issuedAt: 2 }, state);
         expect(state.windowId).toBe(77);
-        // The Firefox window itself must never be fullscreened by the extension.
+        // windows.update is not called only because this router was constructed without the windows API.
         expect(windows.update).not.toHaveBeenCalled();
     });
 
-    it('sends presentation mode to the content tab without touching the window', async () => {
+    it('fullscreens the Firefox window and sends presentation mode to the content tab', async () => {
         const tabs: BrowserTabs = { get: vi.fn().mockResolvedValue({ id: 9, windowId: 77 }), create: vi.fn(), update: vi.fn(), sendMessage: vi.fn() };
         const windows = { update: vi.fn().mockResolvedValue({ id: 77, state: 'fullscreen' }) };
         const sendMessage = vi.fn().mockResolvedValue(undefined);
-        const router = new CommandRouter(tabs, sendMessage);
+        const router = new CommandRouter(tabs, sendMessage, windows);
         const state = { ...createInitialPlayerState(), tabId: 9, windowId: 77 };
         await router.route({ type: 'fullscreen', commandId: 'c3', roomId: 'r1', issuedAt: 3 }, state);
         expect(sendMessage).toHaveBeenCalledWith(9, { type: 'fullscreen' });
-        expect(windows.update).not.toHaveBeenCalled();
+        expect(windows.update).toHaveBeenCalledWith(77, { state: 'fullscreen' });
     });
 
     it('reports fullscreen failure when the player tab is unavailable', async () => {
