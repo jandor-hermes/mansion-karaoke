@@ -31,10 +31,12 @@
         return false;
       }
     }, attempts)) {
+      await adapter.syncMetadata(command.videoId);
       return { ok: true, mode: "yt-navigate", videoId: command.videoId, fullscreenRetained: retained(fullscreen, adapter) };
     }
     if (adapter.loadVideoById(command.videoId, command.position) && await waitFor(adapter, () => adapter.getVideoId() === command.videoId, attempts)) {
       adapter.replaceWatchUrl(command.videoId);
+      await adapter.syncMetadata(command.videoId);
       return { ok: true, mode: "player-api", videoId: command.videoId, fullscreenRetained: retained(fullscreen, adapter) };
     }
     return { ok: false, videoId: command.videoId, fullscreenRetained: retained(fullscreen, adapter), error: "same-document load was not verified" };
@@ -66,6 +68,21 @@
       },
       replaceWatchUrl(videoId) {
         history.replaceState(history.state, "", `/watch?v=${videoId}`);
+      },
+      async syncMetadata(videoId) {
+        let data = player()?.getVideoData?.();
+        for (let attempt = 0; attempt < 20 && (data?.video_id !== videoId || !data?.title); attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          data = player()?.getVideoData?.();
+        }
+        if (data?.video_id !== videoId || !data.title) return;
+        document.title = `${data.title} - YouTube`;
+        for (const selector of ["h1.ytd-watch-metadata yt-formatted-string", "h1.title yt-formatted-string"]) {
+          const title = document.querySelector(selector);
+          if (title) title.textContent = data.title;
+        }
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        if (ogTitle) ogTitle.setAttribute("content", data.title);
       },
       getFullscreenElement: () => document.fullscreenElement,
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms))

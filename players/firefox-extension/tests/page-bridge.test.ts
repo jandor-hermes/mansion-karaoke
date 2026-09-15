@@ -19,6 +19,7 @@ describe('YouTube page-context loader', () => {
             getHref: () => href,
             loadVideoById: vi.fn(),
             replaceWatchUrl: vi.fn(),
+            syncMetadata: vi.fn(),
             getFullscreenElement: () => fullscreen,
             wait: async () => undefined,
         };
@@ -28,6 +29,7 @@ describe('YouTube page-context loader', () => {
         });
         expect(dispatchNavigate).toHaveBeenCalledWith('dQw4w9WgXcQ', 12);
         expect(adapter.loadVideoById).not.toHaveBeenCalled();
+        expect(adapter.syncMetadata).toHaveBeenCalledWith('dQw4w9WgXcQ');
     });
 
     it('falls back to player loadVideoById and updates the watch URL', async () => {
@@ -40,6 +42,7 @@ describe('YouTube page-context loader', () => {
             getHref: () => href,
             loadVideoById: vi.fn((target) => { videoId = target; return true; }),
             replaceWatchUrl: vi.fn((target) => { href = `https://www.youtube.com/watch?v=${target}`; }),
+            syncMetadata: vi.fn(),
             getFullscreenElement: () => fullscreen,
             wait: async () => undefined,
         };
@@ -48,5 +51,6 @@ describe('YouTube page-context loader', () => {
         });
         expect(adapter.loadVideoById).toHaveBeenCalledWith('dQw4w9WgXcQ', 3);
         expect(adapter.replaceWatchUrl).toHaveBeenCalledWith('dQw4w9WgXcQ');
+        expect(adapter.syncMetadata).toHaveBeenCalledWith('dQw4w9WgXcQ');
     });
 });
