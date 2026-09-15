@@ -6,7 +6,7 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
   var external_exports = {};
   __export(external_exports, {
     BRAND: () => BRAND,
@@ -118,7 +118,7 @@
     void: () => voidType
   });
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
   var util;
   (function(util2) {
     util2.assertEqual = (_) => {
@@ -252,7 +252,7 @@
     }
   };
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
   var ZodIssueCode = util.arrayToEnum([
     "invalid_type",
     "invalid_literal",
@@ -370,7 +370,7 @@
     return error;
   };
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
   var errorMap = (issue, _ctx) => {
     let message;
     switch (issue.code) {
@@ -473,7 +473,7 @@
   };
   var en_default = errorMap;
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
   var overrideErrorMap = en_default;
   function setErrorMap(map) {
     overrideErrorMap = map;
@@ -482,7 +482,7 @@
     return overrideErrorMap;
   }
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
   var makeIssue = (params) => {
     const { data, path, errorMaps, issueData } = params;
     const fullPath = [...path, ...issueData.path || []];
@@ -592,14 +592,14 @@
   var isValid = (x) => x.status === "valid";
   var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
   var errorUtil;
   (function(errorUtil2) {
     errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
     errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
   })(errorUtil || (errorUtil = {}));
 
-  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
+  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
   var ParseInputLazyPath = class {
     constructor(parent, value, path, key) {
       this._cachedPath = [];
@@ -4047,7 +4047,7 @@
   };
   var NEVER = INVALID;
 
-  // ../../packages/playback-protocol/src/index.ts
+  // packages/playback-protocol/src/index.ts
   var nonEmptyString = external_exports.string().trim().min(1);
   var timestamp = external_exports.number().finite().int().nonnegative();
   var sequence = external_exports.number().int().positive();
@@ -4097,7 +4097,7 @@
     })
   ]);
 
-  // src/load-video.ts
+  // players/firefox-extension/src/load-video.ts
   var YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
   function parseLoadVideoResult(value) {
     if (!value || typeof value !== "object") return null;
@@ -4116,7 +4116,7 @@
     };
   }
 
-  // src/index.ts
+  // players/firefox-extension/src/index.ts
   function isVerifiedLoad(result, videoId) {
     const value = parseLoadVideoResult(result);
     return value?.ok === true && value.videoId === videoId;
@@ -4247,7 +4247,7 @@
     };
   }
 
-  // src/events.ts
+  // players/firefox-extension/src/events.ts
   var DOM_EVENT_TYPES = {
     loadedmetadata: "ready",
     ready: "ready",
@@ -4281,7 +4281,7 @@
     return playbackEventSchema.parse(event);
   }
 
-  // src/config.ts
+  // players/firefox-extension/src/config.ts
   var DEFAULT_CONTROLLER_URL = "http://127.0.0.1:3010";
   function parseStoredConfig(value) {
     if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "" };
@@ -4292,7 +4292,7 @@
     };
   }
 
-  // src/background.ts
+  // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);

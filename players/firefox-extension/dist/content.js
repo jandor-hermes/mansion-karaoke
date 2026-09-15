@@ -30,9 +30,9 @@
     mod
   ));
 
-  // node_modules/qrcode-generator/qrcode.js
+  // players/firefox-extension/node_modules/qrcode-generator/qrcode.js
   var require_qrcode = __commonJS({
-    "node_modules/qrcode-generator/qrcode.js"(exports, module) {
+    "players/firefox-extension/node_modules/qrcode-generator/qrcode.js"(exports, module) {
       var qrcode2 = (function() {
         var qrcode3 = function(typeNumber, errorCorrectionLevel) {
           var PAD0 = 236;
@@ -1717,7 +1717,7 @@
     }
   });
 
-  // src/presentation.ts
+  // players/firefox-extension/src/presentation.ts
   var PRESENTATION_CLASS = "karaoke-video-presentation";
   var PRESENTATION_STYLE_ID = "karaoke-video-presentation-style";
   var YOUTUBE_FULLSCREEN_BUTTON_SELECTOR = 'button.ytp-fullscreen-button[aria-label*="Full screen"]';
@@ -1829,7 +1829,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     });
   }
 
-  // src/load-video.ts
+  // players/firefox-extension/src/load-video.ts
   var YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
   function parseLoadVideoCommand(value) {
     if (!value || typeof value !== "object") return null;
@@ -1888,7 +1888,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     };
   }
 
-  // src/join-qr.ts
+  // players/firefox-extension/src/join-qr.ts
   var import_qrcode_generator = __toESM(require_qrcode(), 1);
   var JOIN_QR_ID = "karaoke-join-qr";
   function createJoinQrDataUrl(joinUrl) {
@@ -1921,7 +1921,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     return host;
   }
 
-  // src/content.ts
+  // players/firefox-extension/src/content.ts
   var video = () => document.querySelector("video");
   function classifyYouTubeError(documentLike, element) {
     const mediaCode = element.error?.code;

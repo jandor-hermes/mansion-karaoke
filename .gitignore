@@ -3,6 +3,7 @@ node_modules
 .DS_Store
 .venv
 .env.sentry-build-plugin
+.karaoke/
 
 # Tizen packaging output
 apps/tizen/dist/

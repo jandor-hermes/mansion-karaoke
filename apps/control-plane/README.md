@@ -4,13 +4,15 @@ Phase 2's minimal loopback control-plane vertical slice. It owns queue state and
 
 ## Run
 
-From the repository root, using the checked-in Bun install (no `bun`, `bunx`, `tsx`, or `workspace:*` install is required):
+From the repository root, install the locked workspace dependencies and build the controller:
 
 ```sh
-cd apps/control-plane
-node scripts/build.mjs
-KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local npm run start
+bun install --no-save
+node apps/control-plane/scripts/build.mjs
+KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local node apps/control-plane/dist/apps/control-plane/src/server.js
 ```
+
+For the complete friend-facing developer workflow, including token generation and the Firefox build, use `./scripts/karaoke-dev.sh run` and follow [`FRIEND_SETUP.md`](../../FRIEND_SETUP.md).
 
 The service binds `0.0.0.0` (all interfaces) so phones on the same Wi-Fi can load the guest page; set `KARAOKE_BIND=127.0.0.1` to restrict it to loopback again. **Security tradeoff:** binding LAN-wide exposes an authenticated control API (queue, playback controls) to everyone on the local network — anyone with the `KARAOKE_TOKEN` party secret can steer playback, so use a long random token and treat it as shared, revocable, and unsuitable for untrusted networks. At startup the server prints its loopback URL plus `guest UI (phones on this Wi-Fi): http://<LAN-IP>:<PORT>/` lines for every LAN IPv4 address it detects.
 

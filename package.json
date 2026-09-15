@@ -38,6 +38,8 @@
         "firefox:check": "tsc -p players/firefox-extension/tsconfig.json --noEmit",
         "firefox:test": "vitest run --config players/firefox-extension/vitest.config.mts",
         "firefox:lint": "if command -v web-ext >/dev/null 2>&1; then web-ext lint --source-dir players/firefox-extension/dist; else echo 'web-ext not installed; manual Firefox lint gate remains'; fi",
+        "karaoke:dev": "./scripts/karaoke-dev.sh run",
+        "karaoke:dev:test": "node --test scripts/karaoke-dev.test.mjs",
         "typecheck": "bun run typecheck:api && bun run typecheck:web",
         "typecheck:api": "cd apps/api && bunx tsc --noEmit",
         "typecheck:web": "cd apps/web && bunx tsc --noEmit",
