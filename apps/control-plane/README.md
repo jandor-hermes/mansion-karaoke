@@ -26,7 +26,9 @@ CORS: the control plane allows the Firefox extension origin plus same-LAN `http:
 
 - `POST /queue` — enqueue a song; accepts `{ "itemId": "song-1", "videoId": "YouTubeId", "title": "optional", "channel": "optional", "duration": "optional", "thumbnail": "optional" }` (duplicate item IDs are idempotent)
 - `POST /queue/next` — put a song at the front of the waiting queue; starts immediately when idle
-- `POST /queue/play-now` — interrupt and play a song immediately while preserving the waiting queue
+- `POST /queue/play-now` — interrupt and play a new song immediately while preserving the waiting queue
+- `POST /queue/play` — JSON `{ "itemId": "song-1" }`; play an existing queued item immediately while preserving the relative order of every other waiting item
+- `GET /status` includes newest-first `history` for ended, skipped, and replaced songs (up to 100 entries in memory)
 - `POST /queue/remove` — JSON `{ "itemId": "song-1" }`; removes a queued item and returns `{ "queue": [...] }`. Returns `409` for the currently playing item (skip instead) and `404` if the item is not queued.
 - `POST /queue/move` — JSON `{ "itemId": "song-1", "position": 0 }`; 0-based index within the remaining queue, invalid positions are clamped. Returns `400` for the currently playing item or an unknown itemId, plus the updated `{ "queue": [...] }` on success.
 - `GET /command?after=<sequence>` — returns the next command after the provider's last applied sequence, or `{ command: null, sequence }`
