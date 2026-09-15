@@ -13,6 +13,24 @@ export type YouTubePageAdapter = {
 
 const retained = (before: unknown, adapter: YouTubePageAdapter) => before != null && adapter.getFullscreenElement() === before;
 
+type MetadataDocument = {
+    title: string;
+    querySelector(selector: string): { textContent?: string | null; setAttribute?: (name: string, value: string) => void } | null;
+};
+
+export function syncYouTubeMetadata(documentLike: MetadataDocument, title: string): void {
+    documentLike.title = `${title} - YouTube`;
+    for (const selector of [
+        'h1.ytd-watch-metadata yt-formatted-string',
+        'h1.title yt-formatted-string',
+        '.ytp-fullscreen-metadata .ytPlayerOverlayVideoDetailsRendererTitle .ytAttributedStringHost',
+    ]) {
+        const node = documentLike.querySelector(selector);
+        if (node) node.textContent = title;
+    }
+    documentLike.querySelector('meta[property="og:title"]')?.setAttribute?.('content', title);
+}
+
 async function waitFor(adapter: YouTubePageAdapter, predicate: () => boolean, attempts: number): Promise<boolean> {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
         if (predicate()) return true;
@@ -80,13 +98,7 @@ function installPageBridge(): void {
                 data = player()?.getVideoData?.();
             }
             if (data?.video_id !== videoId || !data.title) return;
-            document.title = `${data.title} - YouTube`;
-            for (const selector of ['h1.ytd-watch-metadata yt-formatted-string', 'h1.title yt-formatted-string']) {
-                const title = document.querySelector(selector);
-                if (title) title.textContent = data.title;
-            }
-            const ogTitle = document.querySelector('meta[property="og:title"]');
-            if (ogTitle) ogTitle.setAttribute('content', data.title);
+            syncYouTubeMetadata(document, data.title);
         },
         getFullscreenElement: () => document.fullscreenElement,
         wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
