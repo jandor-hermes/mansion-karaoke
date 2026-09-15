@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createControlPlane, type ControlPlane } from '../src';
+import { createControlPlane, type ControlPlane } from '../src/index.js';
 
 const item = (videoId: string, itemId = `item-${videoId}`) => ({ videoId, itemId });
 
