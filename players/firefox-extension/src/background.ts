@@ -15,11 +15,25 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     let eventSequence = 0;
     let timer: ReturnType<typeof setInterval> | null = null;
     let pollInFlight: Promise<void> | null = null;
+    let surfaceReady: Promise<void> = Promise.resolve();
     let onMessageInstalled = false;
+
+    const ensurePlayerSurface = async () => {
+        if (!client || state.tabId !== null) return;
+        if (typeof browserApi.tabs.query !== 'function' || typeof browserApi.runtime.getURL !== 'function') return;
+        const displayUrl = browserApi.runtime.getURL('display.html');
+        const tabs = await browserApi.tabs.query({});
+        const existing = tabs.find((tab) => tab.url === displayUrl || tab.url?.startsWith('https://www.youtube.com/watch'));
+        const tab = existing ?? await browserApi.tabs.create({ url: displayUrl, active: true });
+        state.tabId = tab.id ?? null;
+        state.windowId = tab.windowId ?? null;
+        console.debug('[karaoke-player] player surface ready', { tabId: state.tabId, windowId: state.windowId, reused: Boolean(existing) });
+    };
 
     const runPoll = async () => {
         if (!client) { console.debug('[karaoke-player] poll skipped: no controller token'); return; }
         try {
+            await surfaceReady;
             console.debug('[karaoke-player] polling controller', { baseUrl: activeConfig.baseUrl, after: commandCursor });
             let result = await client.poll(commandCursor);
             if (!result.command && commandCursor !== Number.MAX_SAFE_INTEGER && result.sequence < commandCursor) {
@@ -45,6 +59,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         stop();
         activeConfig = config;
         client = config.token ? createControllerClient(config) : null;
+        surfaceReady = client ? ensurePlayerSurface() : Promise.resolve();
         console.debug('[karaoke-player] configuration updated', { baseUrl: config.baseUrl, hasToken: Boolean(config.token) });
         if (client) { timer = setInterval(() => void poll(), 750); void poll(); }
     };

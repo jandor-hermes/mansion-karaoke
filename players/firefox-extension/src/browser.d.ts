@@ -1,6 +1,7 @@
 declare const browser: {
     windows: { update(id: number, options: { state: 'fullscreen' }): Promise<unknown> };
     tabs: {
+        query(options: Record<string, unknown>): Promise<Array<{ id?: number; windowId?: number; url?: string }>>;
         get(id: number): Promise<{ id?: number; windowId?: number }>;
         create(options: { url: string; active: boolean }): Promise<{ id?: number; windowId?: number }>;
         update(id: number, options: { url: string; active: boolean }): Promise<unknown>;
