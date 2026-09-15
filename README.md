@@ -4,35 +4,20 @@ A local-network karaoke host for house parties. One Mac runs the controller and 
 
 ## Current status
 
-Mansion Karaoke is a developer preview for macOS. The current distribution flow uses a source checkout, a Terminal launcher, and a temporary Firefox extension. Guests install nothing.
+Mansion Karaoke is a private beta for macOS. A self-contained Mac app runs the local controller and guides the host through loading the temporary Firefox extension. Guests install nothing.
 
 For the complete host walkthrough, see **[Friend Setup](FRIEND_SETUP.md)**.
 
 ## Quick start
 
-Requirements:
+Host requirements:
 
 - macOS
 - Firefox
-- Git
-- Bun 1.3.13 or newer
-- Node.js 22 or newer
 
-```sh
-git clone https://github.com/jandor-hermes/mansion-karaoke.git
-cd mansion-karaoke
-./scripts/karaoke-dev.sh run
-```
-
-Then load `players/firefox-extension/dist/manifest.json` from Firefox:
-
-1. Open `about:debugging`.
-2. Select **This Firefox**.
-3. Select **Load Temporary Add-on…**.
-4. Choose the generated `manifest.json`.
-5. Open the extension toolbar popup.
-6. Enter the controller URL and token printed in Terminal.
-7. Select **Save & start**.
+1. Download the Apple Silicon or Intel ZIP from [GitHub Releases](https://github.com/jandor-hermes/mansion-karaoke/releases).
+2. Move **Mansion Karaoke.app** to Applications.
+3. Follow [Friend Setup](FRIEND_SETUP.md) for the one-time Gatekeeper override and Firefox steps.
 
 The TV/player page displays a QR code. Guest phones on the same Wi-Fi scan it to join.
 
@@ -61,6 +46,10 @@ The controller binds to the local network during a session. Anyone with the disp
 # Launcher tests
 bun run karaoke:dev:test
 
+# Build and test the self-contained Mac app
+bun run macos:build
+bun run macos:test
+
 # Firefox checks
 bun run firefox:test
 bun run firefox:check
@@ -73,9 +62,9 @@ bun --cwd apps/control-plane test
 ## Current limitations
 
 - The temporary Firefox extension must be loaded again after Firefox restarts.
-- The controller runs in Terminal and stops with Control-C.
 - Queue state is in memory and is cleared when the controller stops.
-- Updates use `git pull` followed by another build.
+- App updates are manual downloads from GitHub Releases.
+- The private-beta app is ad-hoc signed, not Developer ID signed, and not notarized, so it requires a one-time Gatekeeper override.
 - YouTube page changes may require compatibility maintenance.
 
 ## Project layout
@@ -85,6 +74,7 @@ apps/control-plane/                 local controller and guest web UI
 players/firefox-extension/          Firefox playback provider
 packages/playback-protocol/         shared command and event schemas
 scripts/karaoke-dev.sh              developer setup and launcher
+packaging/macos/                    native launcher and app bundle builder
 FRIEND_SETUP.md                     shareable host walkthrough
 DISTRIBUTION_AND_UPDATES.md         future packaging and update notes
 ```
