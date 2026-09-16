@@ -24,6 +24,21 @@
       for (const event of ["loadedmetadata", "playing", "pause", "ended", "error"]) {
         element.addEventListener(event, () => report(event === "loadedmetadata" ? "ready" : event, element));
       }
+      const attemptAutoplay = () => {
+        console.debug("[karaoke-player] attempting YouTube autoplay", { muted: element.muted, readyState: element.readyState });
+        void element.play().then(() => console.debug("[karaoke-player] YouTube play() resolved")).catch((error) => console.error("[karaoke-player] YouTube play() rejected", error));
+      };
+      if (element.readyState >= HTMLMediaElement.HAVE_METADATA) attemptAutoplay();
+      else element.addEventListener("loadedmetadata", attemptAutoplay, { once: true });
+      attemptAutoplay();
+      browser.runtime.onMessage.addListener((rawMessage) => {
+        const message = rawMessage;
+        if (message.type !== "resume") return;
+        const current = video();
+        if (!current) return;
+        console.debug("[karaoke-player] received resume command");
+        void current.play().then(() => console.debug("[karaoke-player] resume play() resolved")).catch((error) => console.error("[karaoke-player] resume play() rejected", error));
+      });
     };
     const observer = new MutationObserver(attach);
     observer.observe(document.documentElement, { childList: true, subtree: true });
