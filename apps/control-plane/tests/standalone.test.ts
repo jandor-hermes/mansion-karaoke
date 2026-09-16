@@ -17,7 +17,7 @@ beforeAll(async () => {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const output = readFileSync(resolve(app, 'dist/apps/control-plane/src/server.js'), 'utf8');
-  expect(output).toContain('createControlPlane');
+  expect(output).toContain('createBootstrappedControlPlane');
   const chunks: Buffer[] = [];
   server.stdout!.on('data', (chunk) => chunks.push(chunk));
   await new Promise<void>((resolveReady, reject) => {
