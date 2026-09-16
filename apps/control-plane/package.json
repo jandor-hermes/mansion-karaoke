@@ -9,6 +9,7 @@
     "search:smoke": "node scripts/search-smoke.mjs"
   },
   "dependencies": {
+    "youtubei": "^1.8.16",
     "zod": "^3.24.0"
   },
   "devDependencies": {
