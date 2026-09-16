@@ -1,79 +1,56 @@
 # Mansion Karaoke: Friend Setup Guide
 
-This is the current developer-preview way to host a karaoke night from a Mac. It runs a small local controller in Terminal and loads the Firefox player as a temporary extension. Guests need only a phone on the same Wi-Fi; they do not install anything.
+This is the simplest way to host Mansion Karaoke from a Mac. The app contains the controller and Firefox player files, so the host does **not** need Git, Node.js, Bun, Docker, or a developer checkout. Guests need only a phone on the same Wi-Fi.
 
-## What the host needs
+## Download the Mac app
 
-- A Mac connected to the same Wi-Fi as the guest phones
-- [Firefox](https://www.mozilla.org/firefox/)
-- [Git](https://git-scm.com/) (included with Xcode Command Line Tools on many Macs)
-- [Bun 1.3.13 or newer](https://bun.sh/docs/installation)
-- [Node.js 22 or newer](https://nodejs.org/)
-- Internet access for YouTube search and playback
+1. Open the latest [Mansion Karaoke release](https://github.com/jandor-hermes/mansion-karaoke/releases/latest).
+2. Download the correct file:
+   - **Apple Silicon:** `Mansion-Karaoke-…-macOS-arm64.zip` for M1, M2, M3, M4, or newer Apple chips.
+   - **Intel:** `Mansion-Karaoke-…-macOS-x86_64.zip` for older Intel Macs.
+3. Double-click the ZIP, then drag **Mansion Karaoke.app** into Applications.
 
-No Redis, Docker, YouTube API key, or account is required for this local build.
+To check the Mac type, choose **Apple menu → About This Mac** and look for **Chip** or **Processor**.
 
-## First-time setup
+## Open it the first time
 
-Open Terminal and run:
+This private beta is not Apple-notarized, so macOS may block the first launch even though the release came from this project.
 
-```sh
-git clone https://github.com/jandor-hermes/mansion-karaoke.git
-cd mansion-karaoke
-./scripts/karaoke-dev.sh run
-```
+1. Try to open **Mansion Karaoke** once.
+2. If macOS blocks it, open **System Settings → Privacy & Security**.
+3. Scroll to the security message for Mansion Karaoke and select **Open Anyway**.
+4. Confirm **Open**.
+5. If the firewall asks whether Mansion Karaoke may accept incoming connections, choose **Allow**.
 
-The first run installs dependencies and builds both parts of the system. When it finishes, leave Terminal open. It displays:
-
-- The controller URL, normally `http://127.0.0.1:3010`
-- A generated party token
-- The path to the Firefox extension manifest
-
-The token is stored locally in `.karaoke/party-token` and reused on later runs. Do not post it publicly.
+Only bypass Gatekeeper for a release you received from the project owner. Later launches should open normally.
 
 ## Load the Firefox player
 
-Temporary extensions disappear whenever Firefox exits, so repeat these steps after restarting Firefox:
+Keep the Mansion Karaoke window open while hosting.
 
-1. Open `about:debugging` in Firefox.
-2. Select **This Firefox**.
+1. Select **Reveal Extension** in the app.
+2. Select **Firefox Setup** in the app. Firefox opens its temporary-add-on page.
 3. Select **Load Temporary Add-on…**.
-4. Choose `players/firefox-extension/dist/manifest.json` inside the cloned repository.
-5. Pin the **Mansion Karaoke Firefox Player** toolbar button if desired.
-6. Click its toolbar button.
-7. Enter the controller URL and party token printed in Terminal.
-8. Select **Save & start**.
+4. Choose the revealed `manifest.json` file.
+5. Open the **Mansion Karaoke Firefox Player** toolbar button.
+6. Enter the **Controller URL** and **Party token** shown in the app.
+7. Select **Save & start**.
 
-Firefox opens or focuses the dedicated karaoke display. A join QR code should appear before the first song starts.
+Firefox opens or focuses the dedicated karaoke display. A join QR code appears before the first song starts.
+
+> Firefox removes temporary add-ons whenever Firefox quits. Repeat this section after restarting Firefox. The app keeps the same party token between launches.
 
 ## Start the party
 
-1. Keep the controller Terminal window open.
-2. If macOS asks whether Node may accept incoming network connections, choose **Allow**.
-3. Put Firefox on the TV, directly or over HDMI/AirPlay.
-4. Have guests join the same Wi-Fi and scan the QR code.
-5. Guests enter a display name, search for karaoke videos, and add them to the shared queue.
+1. Put Firefox on the TV, directly or over HDMI/AirPlay.
+2. Have guests join the same Wi-Fi and scan the QR code.
+3. Guests enter a display name, search for karaoke videos, and add them to the shared queue.
 
-Anyone with the QR code or party token can control the session. Use this only on a trusted local network.
+Anyone with the QR code or party token can control the session. Use it only on a trusted local network. Quit **Mansion Karaoke** to stop the local controller; the current queue is cleared when it stops.
 
-Stop the session with **Control-C** in Terminal. The queue is currently held in memory and is cleared when the controller stops.
+## Update later
 
-## Later launches
-
-If nothing changed and the build is already present:
-
-```sh
-cd mansion-karaoke
-./scripts/karaoke-dev.sh start
-```
-
-After downloading updates, rebuild before starting:
-
-```sh
-cd mansion-karaoke
-git pull --ff-only
-./scripts/karaoke-dev.sh run
-```
+Download the newer ZIP from [GitHub Releases](https://github.com/jandor-hermes/mansion-karaoke/releases), quit the old app, and replace it in Applications. The party token stored under `~/Library/Application Support/Mansion Karaoke/` remains in place.
 
 ## Troubleshooting
 
@@ -81,39 +58,36 @@ git pull --ff-only
 
 - Confirm the phone and Mac are on the same Wi-Fi.
 - Avoid guest Wi-Fi networks that isolate devices from each other.
-- Allow incoming connections if the macOS firewall prompts.
-- Use the LAN phone URL printed by the controller, not `127.0.0.1`.
+- Allow incoming connections in the macOS firewall.
+- Use the QR code or LAN address on the Firefox display, not `127.0.0.1`.
 
 ### The extension does not connect
 
 - Keep the controller URL set to `http://127.0.0.1:3010`.
-- Copy the party token exactly from Terminal.
-- Confirm the controller Terminal window is still running.
+- Copy the party token exactly from the app.
+- Confirm that the app status says **Running**.
 - Reload the temporary extension after restarting Firefox.
-
-### Port 3010 is already in use
-
-A previous controller may still be running. Find it with:
-
-```sh
-lsof -nP -iTCP:3010 -sTCP:LISTEN
-```
-
-Stop the old Terminal process with **Control-C**, then start again.
 
 ### YouTube opens but playback remains paused
 
 Allow autoplay with sound for YouTube in Firefox, then retry the song.
 
-## Current limitations
+### Mansion Karaoke says the controller stopped
 
-- This developer flow is intended for macOS and a technically comfortable host.
-- The Firefox extension must be loaded again after Firefox restarts.
-- Terminal must remain open during the party.
-- Updates are manual through `git pull`.
-- The queue is not persisted across controller restarts.
-- YouTube page changes may occasionally require a software update.
+Another application may already use port 3010. Quit the other controller and reopen Mansion Karaoke. Diagnostic output is in:
 
-For setup help, send the host the repository link and this file:
+```text
+~/Library/Application Support/Mansion Karaoke/controller.log
+```
 
-<https://github.com/jandor-hermes/mansion-karaoke/blob/main/FRIEND_SETUP.md>
+## Developer setup
+
+Contributors can still run the source workflow:
+
+```sh
+git clone https://github.com/jandor-hermes/mansion-karaoke.git
+cd mansion-karaoke
+./scripts/karaoke-dev.sh run
+```
+
+See the root README for tests and development commands.
