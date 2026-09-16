@@ -13,26 +13,33 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     let onMessageInstalled = false;
 
     const poll = async () => {
-        if (!client) return;
+        if (!client) { console.debug('[karaoke-player] poll skipped: no controller token'); return; }
         try {
+            console.debug('[karaoke-player] polling controller', { baseUrl: activeConfig.baseUrl, after: sequence });
             const result = await client.poll(sequence);
             if (result.command) {
                 await router.route(result.command, state);
+                console.debug('[karaoke-player] command applied', { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
                 sequence = result.sequence;
             } else sequence = Math.max(sequence, result.sequence);
-        } catch { /* loopback controller may be offline */ }
+        } catch (error) { console.error('[karaoke-player] controller poll failed', error); }
     };
     const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
     const configure = (config: ExtensionConfig) => {
         stop();
         activeConfig = config;
         client = config.token ? createControllerClient(config) : null;
+        console.debug('[karaoke-player] configuration updated', { baseUrl: config.baseUrl, hasToken: Boolean(config.token) });
         if (client) { timer = setInterval(() => void poll(), 750); void poll(); }
     };
     const onMessage = (rawMessage: unknown) => {
         if (!client) return;
         const event = enrichContentEvent(rawMessage as { type: string; position?: number; code?: string; message?: string }, state, sequence, Date.now());
-        if (event) { sequence = event.sequence; void client.publish(event); }
+        if (event) {
+            console.debug('[karaoke-player] content event received', event);
+            sequence = event.sequence;
+            void client.publish(event).then(() => console.debug('[karaoke-player] content event published', { type: event.type, sequence: event.sequence })).catch((error) => console.error('[karaoke-player] event publish failed', error));
+        }
     };
     if (!onMessageInstalled) {
         browserApi.runtime.onMessage.addListener(onMessage);
