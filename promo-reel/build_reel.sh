@@ -28,4 +28,4 @@ ffmpeg -y \
   -t 24 -r 30 -c:v libx264 -preset slow -crf 18 -profile:v high -pix_fmt yuv420p \
   -c:a aac -b:a 192k -movflags +faststart "$OUT"
 
-ffmpeg -y -ss 21.5 -i "$OUT" -frames:v 1 promo-reel/cover.jpg >/dev/null 2>&1
+ffmpeg -y -ss 21.5 -i "$OUT" -frames:v 1 promo-reel/cover-v2.jpg >/dev/null 2>&1
