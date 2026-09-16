@@ -1,7 +1,16 @@
 /* global browser */
+import { applyPresentation, presentationMessage } from './presentation';
 
-type VideoCommand = { type: 'pause' | 'resume' | 'setVolume'; volume?: number };
+type VideoCommand = { type: 'pause' | 'resume' | 'setVolume' | 'fullscreen'; volume?: number };
 const video = () => document.querySelector('video') as HTMLVideoElement | null;
+
+export function classifyYouTubeError(documentLike: { body?: { innerText?: string } | null }, element: HTMLVideoElement): { code: string; message: string } {
+    const mediaCode = element.error?.code;
+    if (mediaCode) return { code: `MEDIA_ERROR_${mediaCode}`, message: element.error?.message || 'Video playback error' };
+    const text = documentLike.body?.innerText ?? '';
+    if (/video unavailable/i.test(text)) return { code: 'PAGE_UNAVAILABLE_TEXT', message: 'YouTube page reports video unavailable' };
+    return { code: 'MEDIA_ERROR', message: 'Video playback error' };
+}
 
 export function installYouTubeContentScript(send: (event: unknown) => void = (event) => browser.runtime.sendMessage(event)) {
     console.debug('[karaoke-player] YouTube content script loaded', { href: location.href });
@@ -10,7 +19,7 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
         send({
             type,
             position: element.currentTime,
-            ...(type === 'error' ? { code: 'MEDIA_ERROR', message: 'Video playback error' } : {}),
+            ...(type === 'error' ? classifyYouTubeError(document, element) : {}),
         });
     };
     const attach = () => {
@@ -50,6 +59,11 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
     attach();
     browser.runtime.onMessage.addListener((rawMessage) => {
         const message = rawMessage as VideoCommand;
+        if (presentationMessage(message)) {
+            if (applyPresentation(document)) console.debug('[karaoke-player] video presentation applied');
+            else console.error('[karaoke-player] video presentation failed');
+            return;
+        }
         const element = video();
         if (!element) return;
         if (message.type === 'pause') element.pause();

@@ -4141,6 +4141,14 @@
         return;
       }
       if (command.type === "fullscreen") {
+        if (state.tabId !== null) {
+          try {
+            await this.sendMessage(state.tabId, { type: "fullscreen" });
+            debug("video presentation applied", { tabId: state.tabId });
+          } catch (error) {
+            console.error("[karaoke-player] video presentation failed", { tabId: state.tabId, error });
+          }
+        }
         if (state.windowId == null || !this.windows) {
           console.error("[karaoke-player] fullscreen failed: dedicated window unavailable");
           return;
