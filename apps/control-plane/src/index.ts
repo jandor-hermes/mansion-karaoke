@@ -34,7 +34,18 @@ export function createControlPlane(options: Options): ControlPlane {
         if (value === undefined) return response.end();
         response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(value));
     };
+    const cors = (request: IncomingMessage, response: ServerResponse) => {
+        const origin = request.headers.origin;
+        if (origin && (origin.startsWith('moz-extension://') || origin === 'http://127.0.0.1:3010' || origin === 'http://localhost:3010')) {
+            response.setHeader('Access-Control-Allow-Origin', origin);
+            response.setHeader('Vary', 'Origin');
+        }
+        response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+        response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    };
     const handler = async (request: IncomingMessage, response: ServerResponse) => {
+        cors(request, response);
+        if (request.method === 'OPTIONS') return send(response, 204);
         if (request.headers.authorization !== `Bearer ${options.token}`) return send(response, 401, { error: 'unauthorized' });
         const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
