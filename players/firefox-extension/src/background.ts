@@ -1,11 +1,11 @@
 /* global browser */
-import { CommandRouter, createControllerClient, createInitialPlayerState, type PlayerState } from './index';
+import { CommandRouter, createControllerClient, createInitialPlayerState, type BrowserWindows, type PlayerState } from './index';
 import { enrichContentEvent } from './events';
 import { parseStoredConfig, type ExtensionConfig } from './config';
 
 export async function startBackground(browserApi: typeof browser, options?: ExtensionConfig) {
     const state: PlayerState = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
+    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), (browserApi as unknown as { windows?: BrowserWindows }).windows);
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(['baseUrl', 'token']));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0;

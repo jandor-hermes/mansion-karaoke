@@ -4101,9 +4101,10 @@
   var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle" });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
-    constructor(tabs, sendMessage = async () => void 0) {
+    constructor(tabs, sendMessage = async () => void 0, windows) {
       this.tabs = tabs;
       this.sendMessage = sendMessage;
+      this.windows = windows;
     }
     async route(input, state) {
       const command = playbackCommandSchema.parse(input);
@@ -4149,6 +4150,14 @@
           debug("video presentation applied", { tabId: state.tabId });
         } catch (error) {
           console.error("[karaoke-player] video presentation failed", { tabId: state.tabId, error });
+        }
+        if (state.windowId != null && this.windows) {
+          try {
+            await this.windows.update(state.windowId, { state: "fullscreen" });
+            debug("window fullscreen applied", { windowId: state.windowId });
+          } catch (error) {
+            console.error("[karaoke-player] window fullscreen failed", { windowId: state.windowId, error });
+          }
         }
         return;
       }
@@ -4226,7 +4235,7 @@
   // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
+    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0;
