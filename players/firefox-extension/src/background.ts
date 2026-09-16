@@ -18,8 +18,12 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     let surfaceReady: Promise<void> = Promise.resolve();
     let onMessageInstalled = false;
 
-    const ensurePlayerSurface = async () => {
-        if (!client || state.tabId !== null) return;
+    const ensurePlayerSurface = async (activate = false) => {
+        if (!client) return;
+        if (state.tabId !== null) {
+            if (activate) await browserApi.tabs.update(state.tabId, { active: true });
+            return;
+        }
         if (typeof browserApi.tabs.query !== 'function' || typeof browserApi.runtime.getURL !== 'function') return;
         const displayUrl = browserApi.runtime.getURL('display.html');
         const tabs = await browserApi.tabs.query({});
@@ -27,6 +31,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         const tab = existing ?? await browserApi.tabs.create({ url: displayUrl, active: true });
         state.tabId = tab.id ?? null;
         state.windowId = tab.windowId ?? null;
+        if (activate && existing && state.tabId !== null) await browserApi.tabs.update(state.tabId, { active: true });
         console.debug('[karaoke-player] player surface ready', { tabId: state.tabId, windowId: state.windowId, reused: Boolean(existing) });
     };
 
@@ -63,7 +68,16 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         console.debug('[karaoke-player] configuration updated', { baseUrl: config.baseUrl, hasToken: Boolean(config.token) });
         if (client) { timer = setInterval(() => void poll(), 750); void poll(); }
     };
-    const onMessage = (rawMessage: unknown) => {
+    const onMessage = async (rawMessage: unknown) => {
+        if (rawMessage && typeof rawMessage === 'object' && (rawMessage as { type?: unknown }).type === 'startSession') {
+            const config = parseStoredConfig((rawMessage as { config?: unknown }).config);
+            if (!config.token) return { ok: false, error: 'Enter an authorization token first.' };
+            configure(config);
+            await surfaceReady;
+            await ensurePlayerSurface(true);
+            await browserApi.storage.local.set(config);
+            return { ok: true, tabId: state.tabId };
+        }
         if (!client) return;
         if (rawMessage && typeof rawMessage === 'object' && (rawMessage as { type?: unknown }).type === 'getJoinInfo') return client.joinInfo();
         const event = enrichContentEvent(rawMessage as { type: string; position?: number; code?: string; message?: string }, state, eventSequence, Date.now());

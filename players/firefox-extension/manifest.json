@@ -6,6 +6,7 @@
   "permissions": ["tabs", "storage", "http://127.0.0.1:3010/*", "https://www.youtube.com/*"],
   "background": { "scripts": ["background.js"] },
   "options_ui": { "page": "options.html", "open_in_tab": true },
+  "browser_action": { "default_title": "Karaoke session", "default_popup": "popup.html" },
   "content_scripts": [{ "matches": ["https://www.youtube.com/watch*"] , "js": ["content.js"], "run_at": "document_idle" }],
   "web_accessible_resources": ["page-bridge.js"],
   "browser_specific_settings": { "gecko": { "id": "local-karaoke-player@localhost", "data_collection_permissions": { "required": ["none"] } } }

@@ -11,13 +11,16 @@ const referenced = [
   ...(manifest.content_scripts ?? []).flatMap((entry) => entry.js ?? []),
   ...(manifest.web_accessible_resources ?? []),
   ...(manifest.options_ui?.page ? [manifest.options_ui.page] : []),
+  ...(manifest.browser_action?.default_popup ? [manifest.browser_action.default_popup] : []),
   'display.html',
   'display.js',
+  'popup.js',
 ];
 assert.ok(referenced.length > 0, 'manifest must reference generated assets');
 assert.ok(manifest.options_ui?.page, 'manifest must reference the options page');
 assert.ok(fs.existsSync(path.join(distDir, manifest.options_ui.page)), 'missing generated options page');
 assert.ok(fs.existsSync(path.join(distDir, 'display.html')), 'missing generated display page');
+assert.ok(fs.existsSync(path.join(distDir, 'popup.js')), 'missing generated popup script');
 for (const relativePath of referenced) {
   assert.ok(!path.isAbsolute(relativePath), `manifest path must be relative: ${relativePath}`);
   assert.ok(fs.existsSync(path.join(distDir, relativePath)), `missing generated asset: ${relativePath}`);

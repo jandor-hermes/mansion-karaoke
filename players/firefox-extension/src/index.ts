@@ -3,7 +3,7 @@ import { parseLoadVideoResult, type LoadVideoCommand, type LoadVideoResult } fro
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
 export type PlayerState = { tabId: number | null; windowId?: number | null; itemId?: string; videoId?: string; roomId?: string; status: PlayerStatus };
-export type BrowserTabs = { get(id: number): Promise<{ id?: number; windowId?: number }>; create(options: { url: string; active: boolean }): Promise<{ id?: number; windowId?: number }>; update(id: number, options: { url: string; active: boolean }): Promise<unknown>; sendMessage?: (tabId: number, message: unknown) => Promise<unknown> };
+export type BrowserTabs = { get(id: number): Promise<{ id?: number; windowId?: number }>; create(options: { url: string; active: boolean }): Promise<{ id?: number; windowId?: number }>; update(id: number, options: { url?: string; active?: boolean }): Promise<unknown>; sendMessage?: (tabId: number, message: unknown) => Promise<unknown> };
 export type BrowserWindows = { update(id: number, options: { state: 'fullscreen' }): Promise<unknown> };
 export type ContentCommand =
     | { type: 'pause' | 'resume' | 'fullscreen' }
