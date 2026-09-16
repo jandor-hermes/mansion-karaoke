@@ -82,6 +82,10 @@
 
 The local Firefox playback agent supports authenticated `POST /control/fullscreen`; it presents the dedicated YouTube window through the Firefox `windows` API rather than relying on remote page `requestFullscreen()` activation. Real Firefox/TV fullscreen behavior remains a manual acceptance check.
 
+### Local Firefox party build
+
+The `karaoke-app` branch contains a developer-preview local controller and Firefox player for hosting from a Mac without Redis or Docker. See **[Friend setup](FRIEND_SETUP.md)** for the complete clone, build, Firefox, phone, update, and troubleshooting walkthrough.
+
 
 ### Host (TV / laptop)
 

@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // src/config.ts
+  // players/firefox-extension/src/config.ts
   var DEFAULT_CONTROLLER_URL = "http://127.0.0.1:3010";
   function parseStoredConfig(value) {
     if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "" };
@@ -11,7 +11,7 @@
     };
   }
 
-  // src/options.ts
+  // players/firefox-extension/src/options.ts
   var form = document.querySelector("#config-form");
   var baseUrl = document.querySelector("#base-url");
   var token = document.querySelector("#token");

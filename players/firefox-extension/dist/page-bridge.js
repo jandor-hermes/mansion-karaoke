@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // src/load-video.ts
+  // players/firefox-extension/src/load-video.ts
   var YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
   function parseLoadVideoCommand(value) {
     if (!value || typeof value !== "object") return null;
@@ -10,7 +10,7 @@
     return { type: "loadVideo", videoId: candidate.videoId, position: candidate.position };
   }
 
-  // src/page-bridge.ts
+  // players/firefox-extension/src/page-bridge.ts
   var retained = (before, adapter) => before != null && adapter.getFullscreenElement() === before;
   function syncYouTubeMetadata(documentLike, title) {
     documentLike.title = `${title} - YouTube`;
