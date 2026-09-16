@@ -2,6 +2,61 @@ import { describe, expect, it, vi } from 'vitest';
 import { startBackground } from '../src/background';
 
 describe('background lifecycle', () => {
+    it('opens a join screen immediately when configured but no YouTube player tab exists', async () => {
+        const browserApi = {
+            tabs: {
+                query: vi.fn().mockResolvedValue([]),
+                get: vi.fn(),
+                create: vi.fn().mockResolvedValue({ id: 55, windowId: 9 }),
+                update: vi.fn(),
+                sendMessage: vi.fn(),
+                onRemoved: { addListener: vi.fn() },
+            },
+            runtime: {
+                getURL: vi.fn((path: string) => `moz-extension://test/${path}`),
+                sendMessage: vi.fn(),
+                onMessage: { addListener: vi.fn() },
+            },
+            storage: {
+                local: {
+                    get: vi.fn().mockResolvedValue({ baseUrl: 'http://127.0.0.1:3010', token: 'token' }),
+                    set: vi.fn(),
+                },
+                onChanged: { addListener: vi.fn() },
+            },
+        } as any;
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ command: null, sequence: 0 }), { status: 200 }));
+        try {
+            const background = await startBackground(browserApi);
+            await background.poll();
+            expect(browserApi.tabs.query).toHaveBeenCalled();
+            expect(browserApi.tabs.create).toHaveBeenCalledWith({ url: 'moz-extension://test/display.html', active: true });
+            expect(background.state).toMatchObject({ tabId: 55, windowId: 9 });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
+    it('reuses an existing YouTube player tab instead of opening a duplicate join screen', async () => {
+        const browserApi = {
+            tabs: {
+                query: vi.fn().mockResolvedValue([{ id: 66, windowId: 10, url: 'https://www.youtube.com/watch?v=existing' }]),
+                get: vi.fn(), create: vi.fn(), update: vi.fn(), sendMessage: vi.fn(), onRemoved: { addListener: vi.fn() },
+            },
+            runtime: { getURL: vi.fn((path: string) => `moz-extension://test/${path}`), sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } },
+            storage: { local: { get: vi.fn().mockResolvedValue({ baseUrl: 'http://127.0.0.1:3010', token: 'token' }), set: vi.fn() }, onChanged: { addListener: vi.fn() } },
+        } as any;
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ command: null, sequence: 0 }), { status: 200 }));
+        try {
+            const background = await startBackground(browserApi);
+            await background.poll();
+            expect(browserApi.tabs.create).not.toHaveBeenCalled();
+            expect(background.state).toMatchObject({ tabId: 66, windowId: 10 });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
     it('fast-forwards to the current server sequence when no durable cursor exists', async () => {
         const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ command: null, sequence: 12 }), { status: 200 }));
         const browserApi = {
