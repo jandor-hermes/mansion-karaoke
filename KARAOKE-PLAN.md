@@ -136,6 +136,12 @@ The exact monorepo split may be adjusted after Phase 0, but these boundaries mus
 - Added a standalone Firefox MV2 provider under `players/firefox-extension` with protocol-validated command routing, authenticated configurable loopback polling, one dedicated YouTube tab, and a YouTube content script for HTML video lifecycle/control.
 - Provider unit tests and TypeScript checks pass. Fullscreen remains a Firefox/window presentation configuration/manual gate; OS keystroke automation is not used.
 
+## Phase 2 status
+
+- Added `apps/control-plane`, a token-authenticated loopback Node/TypeScript service that owns a queue and emits provider-neutral commands for enqueue, play-next, pause, resume, skip, and volume control.
+- Added provider event ingestion with ended-event advancement, monotonic command polling sequences, idempotent queue insertion, status reporting, and restart-safe polling semantics.
+- Added integration tests and a runnable README. Automated Phase 2 tests pass; the Firefox fullscreen/window presentation and real YouTube playback remain the manual gate.
+
 ## Deliberately out of scope until the core gates pass
 
 - Downloading or caching YouTube media.

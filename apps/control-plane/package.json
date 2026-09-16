@@ -1,0 +1,8 @@
+{
+  "name": "@karaoke/control-plane",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "vitest run tests/control-plane.test.ts", "start": "tsx src/server.ts" },
+  "dependencies": { "@karaoke/playback-protocol": "workspace:*" },
+  "devDependencies": { "tsx": "^4.19.0", "vitest": "^3.2.6", "@types/node": "^22.0.0" }
+}
