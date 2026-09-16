@@ -7,4 +7,5 @@ declare const browser: {
         onRemoved: { addListener(listener: (tabId: number) => void): void };
     };
     runtime: { sendMessage(message: unknown): Promise<unknown>; onMessage: { addListener(listener: (message: unknown) => void): void } };
+    storage: { local: { get(keys?: string[]): Promise<unknown>; set(items: Record<string, unknown>): Promise<void> } };
 };

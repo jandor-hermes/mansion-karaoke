@@ -4155,11 +4155,27 @@
     };
   }
 
+  // players/firefox-extension/src/config.ts
+  var DEFAULT_CONTROLLER_URL = "http://127.0.0.1:3010";
+  function parseStoredConfig(value) {
+    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "" };
+    const stored = value;
+    return {
+      baseUrl: typeof stored.baseUrl === "string" ? stored.baseUrl : DEFAULT_CONTROLLER_URL,
+      token: typeof stored.token === "string" ? stored.token : ""
+    };
+  }
+
   // players/firefox-extension/src/background.ts
-  function startBackground(browserApi, options = { baseUrl: "http://127.0.0.1:3010", token: "" }) {
+  async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
+    const config = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
+    if (!config.token) {
+      console.warn("Local Karaoke Player is idle: configure a bearer token in extension options.");
+      return { state, poll: async () => void 0 };
+    }
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
-    const client = createControllerClient(options);
+    const client = createControllerClient(config);
     let sequence2 = 0;
     const poll = async () => {
       try {

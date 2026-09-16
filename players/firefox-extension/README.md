@@ -11,7 +11,7 @@ npm run firefox:build
 npm run firefox:verify
 ```
 
-The deterministic build bundles `src/background.ts` and `src/content.ts` with the pinned repository `esbuild` tool into `players/firefox-extension/dist/background.js` and `dist/content.js`, and copies the manifest into `dist/`. Load **`players/firefox-extension/dist`** as a temporary Firefox add-on (`about:debugging` → This Firefox → Load Temporary Add-on → `dist/manifest.json`). The verification step checks every manifest script exists and rejects common embedded-secret patterns; tokens remain runtime loopback configuration and are not bundled.
+The deterministic build bundles `src/background.ts`, `src/content.ts`, and `src/options.ts` with the pinned repository `esbuild` tool into `players/firefox-extension/dist/`, and copies the manifest and options page into `dist/`. Load **`players/firefox-extension/dist`** as a temporary Firefox add-on (`about:debugging` → This Firefox → Load Temporary Add-on → `dist/manifest.json`). Open the add-on's **Preferences** (or `about:addons` → Local Karaoke Player → Preferences), enter the controller URL and bearer token, then click **Save settings**. The background poller loads those values from `browser.storage.local` before starting; with no token it remains idle and logs a diagnostic message. The verification step checks every manifest asset, including the options page, exists and rejects common embedded-secret patterns; tokens remain runtime loopback configuration and are not bundled.
 
 The manifest deliberately grants only tabs/storage, loopback controller, and YouTube watch permissions. `npm run firefox:lint` runs `web-ext lint` when that optional CLI is installed; otherwise it reports the manual gate.
 

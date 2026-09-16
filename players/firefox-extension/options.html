@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local Karaoke Player settings</title></head>
+<body>
+  <main>
+    <h1>Local Karaoke Player</h1>
+    <p>Set the controller URL and bearer token supplied by your local control plane.</p>
+    <form id="config-form">
+      <label>Controller URL <input id="base-url" type="url" required></label>
+      <label>Bearer token <input id="token" type="password" autocomplete="off"></label>
+      <button type="submit">Save settings</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

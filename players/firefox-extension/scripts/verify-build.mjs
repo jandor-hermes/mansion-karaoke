@@ -9,8 +9,11 @@ const manifest = JSON.parse(fs.readFileSync(path.join(distDir, 'manifest.json'),
 const referenced = [
   ...(manifest.background?.scripts ?? []),
   ...(manifest.content_scripts ?? []).flatMap((entry) => entry.js ?? []),
+  ...(manifest.options_ui?.page ? [manifest.options_ui.page] : []),
 ];
-assert.ok(referenced.length > 0, 'manifest must reference generated scripts');
+assert.ok(referenced.length > 0, 'manifest must reference generated assets');
+assert.ok(manifest.options_ui?.page, 'manifest must reference the options page');
+assert.ok(fs.existsSync(path.join(distDir, manifest.options_ui.page)), 'missing generated options page');
 for (const relativePath of referenced) {
   assert.ok(!path.isAbsolute(relativePath), `manifest path must be relative: ${relativePath}`);
   assert.ok(fs.existsSync(path.join(distDir, relativePath)), `missing generated asset: ${relativePath}`);
