@@ -39,7 +39,9 @@ export function guestPage(roomId: string): string {
                border: 1px solid #33334d; border-radius: .75rem; }
   .result, .queued { display: grid; grid-template-columns: 96px 1fr; gap: .75rem; width: 100%;
     text-align: left; background: #1b1b28; color: #f2f2f7; padding: .5rem; border-radius: .75rem;
-    border: 1px solid #26263a; font-weight: 400; min-height: 0; }
+    border: 1px solid #26263a; font-weight: 400; min-height: 0; align-items: center; }
+  .queued { grid-template-columns: 1fr auto; }
+  .queue-actions { display: flex; gap: .4rem; }
   .result img { width: 96px; height: 54px; object-fit: cover; border-radius: .4rem; background: #26263a; }
   .result .meta, .queued .meta { display: grid; gap: .2rem; align-content: center; overflow: hidden; }
   .result .title, .queued .title { font-size: .95rem; font-weight: 600; color: #f2f2f7;
@@ -166,8 +168,13 @@ export function guestPage(roomId: string): string {
   const card = (item) => '<div class="queued"><span class="meta">' +
     '<span class="title">' + (item.title || item.videoId) + '</span>' +
     '<span class="sub">' + (item.channel || '') + '</span></span></div>';
-  const queueCard = (item) => '<div class="queued"><span class="meta">' +
-    '<span class="title">' + item.videoId + '</span></span></div>';
+  const queueCard = (item, position) => '<div class="queued"><span class="meta">' +
+    '<span class="title">' + item.videoId + '</span></span>' +
+    '<span class="queue-actions">' +
+    '<button class="secondary queue-up" type="button" data-item-id="' + item.itemId + '" data-position="' + position + '" aria-label="Move up">↑</button>' +
+    '<button class="secondary queue-down" type="button" data-item-id="' + item.itemId + '" data-position="' + position + '" aria-label="Move down">↓</button>' +
+    '<button class="secondary queue-remove" type="button" data-item-id="' + item.itemId + '" aria-label="Remove from queue">✕</button>' +
+    '</span></div>';
 
   let lastStatus = '';
   async function refresh() {
@@ -186,6 +193,20 @@ export function guestPage(roomId: string): string {
       $('queue-list').innerHTML = (status.queue || []).map(queueCard).join('');
     } catch { /* transient; next poll retries */ }
   }
+
+  $('queue-list').addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const itemId = button.getAttribute('data-item-id');
+    if (!itemId) return;
+    if (button.classList.contains('queue-remove')) {
+      control('/queue/remove', { itemId });
+    } else if (button.classList.contains('queue-up') || button.classList.contains('queue-down')) {
+      const position = Number(button.getAttribute('data-position'));
+      const delta = button.classList.contains('queue-up') ? -1 : 1;
+      control('/queue/move', { itemId, position: position + delta });
+    }
+  });
 
   const control = async (path, body) => {
     try {
