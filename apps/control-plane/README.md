@@ -4,13 +4,15 @@ Phase 2's minimal loopback control-plane vertical slice. It owns queue state and
 
 ## Run
 
-From the repository root (dependencies must already be installed):
+From the repository root, using the checked-in Bun install (no `bun`, `bunx`, `tsx`, or `workspace:*` install is required):
 
 ```sh
-KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local npm --prefix apps/control-plane run start
+cd apps/control-plane
+node scripts/build.mjs
+KARAOKE_TOKEN=change-me KARAOKE_ROOM_ID=local npm run start
 ```
 
-The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer $KARAOKE_TOKEN`.
+The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Every request requires `Authorization: Bearer <KARAOKE_TOKEN>`. Build output is generated from the TypeScript source into `dist/` and is ignored by git.
 
 ## API
 
