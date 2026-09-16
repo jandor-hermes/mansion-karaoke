@@ -125,6 +125,12 @@ The exact monorepo split may be adjusted after Phase 0, but these boundaries mus
 - Queue persistence across server restarts.
 - Packaging as a macOS app/menu-bar launcher.
 
+## Phase 0 status
+
+- Isolated derivative foundation retained upstream `main` at commit `eeb7801b07d4fa985cd4bc6da6f2263d99719546` and preserved the existing MIT license/attribution.
+- Added provider-neutral `packages/playback-protocol` schemas and inferred TypeScript types for playback commands and sequenced lifecycle events.
+- Focused protocol tests pass; no UI or upstream package changes were made.
+
 ## Deliberately out of scope until the core gates pass
 
 - Downloading or caching YouTube media.
