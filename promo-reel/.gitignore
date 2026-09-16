@@ -1,0 +1,7 @@
+# Generated binaries & throwaway artifacts — regenerate via build_reel.sh
+*.mp4
+*.wav
+screens/
+rendered-scenes/
+verification/
+site/
