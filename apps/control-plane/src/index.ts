@@ -80,6 +80,7 @@ export function createControlPlane(options: Options): ControlPlane {
                 return send(response, 204);
             }
             if (request.method === 'POST' && urlObject.pathname === '/control/skip') { skip(); return send(response, 204); }
+            if (request.method === 'POST' && urlObject.pathname === '/control/fullscreen') { issue(commandFor('fullscreen')); return send(response, 204); }
             if (request.method === 'POST' && ['/control/pause', '/control/resume', '/control/volume'].includes(urlObject.pathname)) {
                 const type = urlObject.pathname.slice('/control/'.length) as 'pause' | 'resume' | 'volume';
                 const value = type === 'volume' ? await body(request) as { volume: number } : {};

@@ -24,6 +24,7 @@ export const playbackCommandSchema = z.discriminatedUnion('type', [
         type: z.literal('setVolume'),
         volume: z.number().finite().min(0).max(1),
     }),
+    commandBase.extend({ type: z.literal('fullscreen') }),
 ]);
 
 const eventBase = z.object({

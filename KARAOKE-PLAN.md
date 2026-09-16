@@ -133,8 +133,8 @@ The exact monorepo split may be adjusted after Phase 0, but these boundaries mus
 
 ## Phase 1 status
 
-- Added a standalone Firefox MV2 provider under `players/firefox-extension` with protocol-validated command routing, authenticated configurable loopback polling, one dedicated YouTube tab, and a YouTube content script for HTML video lifecycle/control.
-- Provider unit tests and TypeScript checks pass. Fullscreen remains a Firefox/window presentation configuration/manual gate; OS keystroke automation is not used.
+- Added a standalone Firefox MV2 provider under `players/firefox-extension` with protocol-validated command routing, authenticated configurable loopback polling, one dedicated YouTube tab/window, and a YouTube content script for HTML video lifecycle/control.
+- Added provider-neutral `fullscreen` and the authenticated local `/control/fullscreen` endpoint. Firefox presents the dedicated tab's window with `browser.windows.update({ state: 'fullscreen' })`; it does not depend on remote `requestFullscreen()` activation. Automated tests, TypeScript checks, build, and `web-ext lint` pass (one expected manifest warning for the `windows` permission). Manual fullscreen behavior remains the acceptance gate.
 
 ## Phase 2 status
 

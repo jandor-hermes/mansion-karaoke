@@ -76,10 +76,11 @@ describe('local control-plane vertical slice', () => {
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
         for (const action of ['pause', 'resume']) expect((await request(plane, `/control/${action}`, { method: 'POST' })).status).toBe(204);
         expect((await request(plane, '/control/volume', { method: 'POST', body: JSON.stringify({ volume: 0.4 }) })).status).toBe(204);
+        expect((await request(plane, '/control/fullscreen', { method: 'POST' })).status).toBe(204);
         const commands = [];
         let after = 0;
         for (;;) { const result = await json(await request(plane, `/command?after=${after}`)); if (!result.command) break; commands.push(result.command.type); after = result.sequence; }
-        expect(commands).toEqual(['play', 'pause', 'resume', 'setVolume']);
+        expect(commands).toEqual(['play', 'pause', 'resume', 'setVolume', 'fullscreen']);
     });
 
     it('recovers polling after a provider restart without duplicating queue items', async () => {
