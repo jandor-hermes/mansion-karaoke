@@ -18,7 +18,7 @@ No Redis, Docker, YouTube API key, or account is required for this local build.
 Open Terminal and run:
 
 ```sh
-git clone --branch karaoke-app https://github.com/jandor-hermes/vkara.git karaoke
+git clone https://github.com/jandor-hermes/vkara.git karaoke
 cd karaoke
 ./scripts/karaoke-dev.sh run
 ```
