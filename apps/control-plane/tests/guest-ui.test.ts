@@ -74,6 +74,8 @@ describe('guest UI page', () => {
         expect(html).toContain('action-next');
         expect(html).toContain('action-now');
         expect(html).toContain('play-now-confirm');
+        expect(html).toContain('queue-play-confirm');
+        expect(html).toContain('queue-play-confirm-button');
         expect(html).toContain('/queue/next');
         expect(html).toContain('/queue/play-now');
         expect(html).toContain('/suggest?q=');
