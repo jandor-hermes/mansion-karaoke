@@ -5,7 +5,7 @@ import { parseStoredConfig, type ExtensionConfig } from './config';
 
 export async function startBackground(browserApi: typeof browser, options?: ExtensionConfig) {
     const state: PlayerState = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);
+    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(['baseUrl', 'token']));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0;

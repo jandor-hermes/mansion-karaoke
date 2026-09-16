@@ -4101,10 +4101,9 @@
   var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle" });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
-    constructor(tabs, sendMessage = async () => void 0, windows) {
+    constructor(tabs, sendMessage = async () => void 0) {
       this.tabs = tabs;
       this.sendMessage = sendMessage;
-      this.windows = windows;
     }
     async route(input, state) {
       const command = playbackCommandSchema.parse(input);
@@ -4141,23 +4140,15 @@
         return;
       }
       if (command.type === "fullscreen") {
-        if (state.tabId !== null) {
-          try {
-            await this.sendMessage(state.tabId, { type: "fullscreen" });
-            debug("video presentation applied", { tabId: state.tabId });
-          } catch (error) {
-            console.error("[karaoke-player] video presentation failed", { tabId: state.tabId, error });
-          }
-        }
-        if (state.windowId == null || !this.windows) {
-          console.error("[karaoke-player] fullscreen failed: dedicated window unavailable");
+        if (state.tabId === null) {
+          console.error("[karaoke-player] fullscreen failed: player tab unavailable");
           return;
         }
         try {
-          await this.windows.update(state.windowId, { state: "fullscreen" });
-          debug("fullscreen applied", { windowId: state.windowId });
+          await this.sendMessage(state.tabId, { type: "fullscreen" });
+          debug("video presentation applied", { tabId: state.tabId });
         } catch (error) {
-          console.error("[karaoke-player] fullscreen failed", { windowId: state.windowId, error });
+          console.error("[karaoke-player] video presentation failed", { tabId: state.tabId, error });
         }
         return;
       }
@@ -4235,7 +4226,7 @@
   // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);
+    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0;
