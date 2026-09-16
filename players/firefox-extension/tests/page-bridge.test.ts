@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { loadVideoInPage, type YouTubePageAdapter } from '../src/page-bridge';
+import { loadVideoInPage, syncYouTubeMetadata, type YouTubePageAdapter } from '../src/page-bridge';
 
 describe('YouTube page-context loader', () => {
     it('dispatches yt-navigate and verifies both URL and player identity', async () => {
@@ -30,6 +30,25 @@ describe('YouTube page-context loader', () => {
         expect(dispatchNavigate).toHaveBeenCalledWith('dQw4w9WgXcQ', 12);
         expect(adapter.loadVideoById).not.toHaveBeenCalled();
         expect(adapter.syncMetadata).toHaveBeenCalledWith('dQw4w9WgXcQ');
+    });
+
+    it('updates the separate native-fullscreen overlay title', () => {
+        const overlayTitle = { textContent: 'Old title' };
+        const mainTitle = { textContent: 'Old title' };
+        const documentLike = {
+            title: 'Old title - YouTube',
+            querySelector: vi.fn((selector: string) => {
+                if (selector === '.ytp-fullscreen-metadata .ytPlayerOverlayVideoDetailsRendererTitle .ytAttributedStringHost') return overlayTitle;
+                if (selector === 'h1.ytd-watch-metadata yt-formatted-string') return mainTitle;
+                return null;
+            }),
+        };
+
+        syncYouTubeMetadata(documentLike, 'New song');
+
+        expect(documentLike.title).toBe('New song - YouTube');
+        expect(mainTitle.textContent).toBe('New song');
+        expect(overlayTitle.textContent).toBe('New song');
     });
 
     it('falls back to player loadVideoById and updates the watch URL', async () => {
