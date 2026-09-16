@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createControlPlane, type ControlPlane } from '../src';
-import { createSearchAdapter, type SearchVideo } from '../src/search';
+import { createControlPlane, type ControlPlane } from '../src/index.js';
+import { createSearchAdapter, type SearchVideo } from '../src/search.js';
 
 const fixture: SearchVideo[] = [{
     id: 'abc123', title: 'Karaoke Song', channel: 'Sing King',
