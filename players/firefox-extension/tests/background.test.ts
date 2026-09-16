@@ -50,6 +50,35 @@ describe('background lifecycle', () => {
         } finally { globalThis.fetch = originalFetch; }
     });
 
+    it('detects a restarted controller and consumes its new lower-sequence command', async () => {
+        const play = { type: 'play', commandId: 'new-server-command', roomId: 'r1', issuedAt: 1, itemId: 'i1', videoId: 'dQw4w9WgXcQ', position: 0 };
+        const fetcher = vi.fn()
+            .mockImplementationOnce(async () => new Response(JSON.stringify({ command: null, sequence: 1 }), { status: 200 }))
+            .mockImplementationOnce(async () => new Response(JSON.stringify({ command: play, sequence: 1 }), { status: 200 }));
+        const browserApi = {
+            tabs: { get: vi.fn(), create: vi.fn().mockResolvedValue({ id: 41 }), update: vi.fn(), sendMessage: vi.fn(), onRemoved: { addListener: vi.fn() } },
+            runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } },
+            storage: {
+                local: {
+                    get: vi.fn().mockResolvedValue({ baseUrl: 'http://127.0.0.1:3010', token: 'token', commandCursor: 14 }),
+                    set: vi.fn(),
+                },
+                onChanged: { addListener: vi.fn() },
+            },
+        } as any;
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = fetcher;
+        try {
+            const background = await startBackground(browserApi);
+            await background.poll();
+            expect(fetcher.mock.calls[0][0]).toContain('/command?after=14');
+            expect(fetcher.mock.calls[1][0]).toContain('/command?after=0');
+            expect(browserApi.tabs.create).toHaveBeenCalledWith({ url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', active: true });
+            expect(browserApi.storage.local.set).toHaveBeenLastCalledWith({ commandCursor: 1 });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
     it('starts polling after a token is saved and never creates duplicate timers', async () => {
         const onMessage: Array<(message: unknown) => void> = [];
         const onChanged: Array<(changes: Record<string, { newValue?: unknown }>) => void> = [];
