@@ -9,6 +9,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(distDir, 'manifest.json'),
 const referenced = [
   ...(manifest.background?.scripts ?? []),
   ...(manifest.content_scripts ?? []).flatMap((entry) => entry.js ?? []),
+  ...(manifest.web_accessible_resources ?? []),
   ...(manifest.options_ui?.page ? [manifest.options_ui.page] : []),
 ];
 assert.ok(referenced.length > 0, 'manifest must reference generated assets');

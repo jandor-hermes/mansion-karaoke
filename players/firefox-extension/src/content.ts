@@ -1,7 +1,8 @@
 /* global browser */
 import { applyPresentation, clickYouTubeFullscreenButton, logPresentationDiagnostics, presentationMessage, activateTheaterMode } from './presentation';
+import { parseLoadVideoCommand, requestPageLoad } from './load-video';
 
-type VideoCommand = { type: 'pause' | 'resume' | 'setVolume' | 'fullscreen'; volume?: number };
+type VideoCommand = { type: 'pause' | 'resume' | 'setVolume' | 'fullscreen' | 'loadVideo'; volume?: number; videoId?: string; position?: number };
 const video = () => document.querySelector('video') as HTMLVideoElement | null;
 
 export function classifyYouTubeError(documentLike: { body?: { innerText?: string } | null }, element: HTMLVideoElement): { code: string; message: string } {
@@ -43,22 +44,26 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
         if (element.readyState >= HTMLMediaElement.HAVE_METADATA) attemptAutoplay();
         else element.addEventListener('loadedmetadata', attemptAutoplay, { once: true });
         attemptAutoplay();
-        browser.runtime.onMessage.addListener((rawMessage) => {
-            const message = rawMessage as VideoCommand;
-            if (message.type !== 'resume') return;
-            const current = video();
-            if (!current) return;
-            console.debug('[karaoke-player] received resume command');
-            void current.play()
-                .then(() => console.debug('[karaoke-player] resume play() resolved'))
-                .catch((error: unknown) => console.error('[karaoke-player] resume play() rejected', error));
-        });
     };
     const observer = new MutationObserver(attach);
     observer.observe(document.documentElement, { childList: true, subtree: true });
     attach();
+    const channel = Math.random().toString(36).slice(2);
+    const bridgeNode = document.createElement('span');
+    bridgeNode.hidden = true;
+    bridgeNode.id = `karaoke-bridge-${channel}`;
+    document.documentElement.appendChild(bridgeNode);
+    const bridgeScript = document.createElement('script');
+    bridgeScript.src = browser.runtime.getURL('page-bridge.js');
+    bridgeScript.dataset.karaokeChannel = channel;
+    bridgeScript.dataset.karaokeNode = bridgeNode.id;
+    bridgeScript.addEventListener('load', () => bridgeScript.remove(), { once: true });
+    document.documentElement.appendChild(bridgeScript);
+
     browser.runtime.onMessage.addListener((rawMessage) => {
         const message = rawMessage as VideoCommand;
+        const load = parseLoadVideoCommand(message);
+        if (load) return requestPageLoad(bridgeNode, channel, load);
         if (presentationMessage(message)) {
             // Best-effort first attempt; expected to fail without trusted user activation.
             clickYouTubeFullscreenButton(document);
@@ -72,7 +77,10 @@ export function installYouTubeContentScript(send: (event: unknown) => void = (ev
         const element = video();
         if (!element) return;
         if (message.type === 'pause') element.pause();
-        if (message.type === 'resume') void element.play();
+        if (message.type === 'resume') {
+            console.debug('[karaoke-player] received resume command');
+            return element.play().then(() => console.debug('[karaoke-player] resume play() resolved'));
+        }
         if (message.type === 'setVolume' && message.volume !== undefined) element.volume = message.volume;
     });
     return observer;

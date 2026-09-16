@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { createControlPlane, type ControlPlane } from './index.js';
 import { createVkaraInnertubeSearchAdapter, type InnertubeClientLike } from './youtube-search.js';
+import { createGoogleYouTubeSuggestionAdapter } from './suggest.js';
 import type { SearchAdapter } from './search.js';
 
 type YoutubeiClientConstructor = new (options: { oauth: { enabled: false } }) => InnertubeClientLike;
@@ -32,5 +33,5 @@ export function createSearchAdapter(options: Pick<BootstrapOptions, 'search' | '
 }
 
 export function createBootstrappedControlPlane(options: BootstrapOptions): ControlPlane {
-  return createControlPlane({ ...options, search: createSearchAdapter(options) });
+  return createControlPlane({ ...options, search: createSearchAdapter(options), suggest: createGoogleYouTubeSuggestionAdapter() });
 }

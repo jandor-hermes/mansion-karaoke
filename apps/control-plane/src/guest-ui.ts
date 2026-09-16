@@ -48,6 +48,18 @@ export function guestPage(roomId: string): string {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .result .sub, .queued .sub { font-size: .8rem; color: #9a9ab0; }
   .results, .queue-list { display: grid; gap: .6rem; }
+  .search-wrap { position: relative; }
+  .search-suggestions { position: absolute; left: 0; right: 0; z-index: 4; display: grid; gap: 1px;
+    background: #33334d; border: 1px solid #33334d; border-radius: .75rem; overflow: hidden; }
+  .search-suggestions:empty { display: none; }
+  .suggestion { border-radius: 0; background: #1b1b28; color: #f2f2f7; text-align: left; font-weight: 500; }
+  dialog { width: min(92vw, 28rem); margin: auto; border: 1px solid #3a3a55; border-radius: 1rem;
+    background: #171721; color: #f2f2f7; padding: 1rem; }
+  dialog::backdrop { background: rgba(0,0,0,.72); }
+  .sheet { display: grid; gap: .75rem; }
+  .sheet h3 { font-size: 1.05rem; line-height: 1.3; }
+  .sheet-actions { display: grid; gap: .6rem; }
+  .danger { background: #802a3e; color: white; }
   #now-playing .result-card-empty { color: #9a9ab0; font-size: .9rem; }
   .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5rem; }
   .controls button { font-size: 1.2rem; padding: 1rem 0; }
@@ -67,9 +79,12 @@ export function guestPage(roomId: string): string {
 
   <section id="search-section">
     <h2>Search</h2>
-    <form id="search-form">
-      <input id="karaoke-search" type="search" placeholder="Search YouTube karaoke…" autocomplete="off">
-    </form>
+    <div class="search-wrap">
+      <form id="search-form">
+        <input id="karaoke-search" type="search" placeholder="Search YouTube karaoke…" autocomplete="off" aria-autocomplete="list" aria-controls="search-suggestions">
+      </form>
+      <div class="search-suggestions" id="search-suggestions" role="listbox"></div>
+    </div>
     <div class="status" id="search-status"></div>
     <div class="results" id="results"></div>
   </section>
@@ -96,10 +111,31 @@ export function guestPage(roomId: string): string {
     <div class="status" id="control-status"></div>
   </section>
 </main>
+<dialog id="song-actions">
+  <div class="sheet">
+    <h3 id="song-actions-title">Choose an action</h3>
+    <div class="sheet-actions">
+      <button id="action-add" type="button">Add to queue</button>
+      <button id="action-next" class="secondary" type="button">Play next</button>
+      <button id="action-now" class="danger" type="button">Play now</button>
+      <button id="action-cancel" class="secondary" type="button">Cancel</button>
+    </div>
+  </div>
+</dialog>
+<dialog id="play-now-confirm">
+  <div class="sheet">
+    <h3 id="play-now-confirm-title">Interrupt the current song?</h3>
+    <div class="sheet-actions">
+      <button id="play-now-confirm-button" class="danger" type="button">Yes, play now</button>
+      <button id="play-now-cancel" class="secondary" type="button">Cancel</button>
+    </div>
+  </div>
+</dialog>
 <script>
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
+  const esc = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const tokenRow = $('token-row');
   let token = localStorage.getItem('karaoke-token');
   if (!token) tokenRow.hidden = false;
@@ -117,6 +153,8 @@ export function guestPage(roomId: string): string {
 
   let volume = 0.75;
   let playing = true;
+  let selectedSong = null;
+  const recentKey = 'karaoke-recent-searches';
 
   const setStatus = (id, message, isError) => { const el = $(id); el.textContent = message || ''; el.classList.toggle('error', !!isError); };
 
@@ -124,12 +162,15 @@ export function guestPage(roomId: string): string {
     event.preventDefault();
     const query = $('karaoke-search').value.trim();
     if (!query) return;
+    $('search-suggestions').textContent = '';
     setStatus('search-status', 'Searching…');
     try {
       const response = await api('/search', { method: 'POST', body: JSON.stringify({ query }) });
       if (response.status === 401) { tokenRow.hidden = false; throw new Error('bad token'); }
       const page = await response.json();
       renderResults(page.items || []);
+      const recent = JSON.parse(localStorage.getItem(recentKey) || '[]').filter((value) => value.toLowerCase() !== query.toLowerCase());
+      localStorage.setItem(recentKey, JSON.stringify([query, ...recent].slice(0, 8)));
       setStatus('search-status', '');
     } catch (error) {
       renderResults([]);
@@ -148,31 +189,83 @@ export function guestPage(roomId: string): string {
         ? '<img src="' + item.thumbnail + '" alt="" loading="lazy">'
         : '<img alt="">';
       button.innerHTML = thumbnail +
-        '<span class="meta"><span class="title">' + (item.title || item.id) + '</span>' +
-        '<span class="sub">' + (item.channel || '') + (item.duration ? ' · ' + item.duration : '') + '</span></span>';
-      button.addEventListener('click', () => queue(item.id));
+        '<span class="meta"><span class="title">' + esc(item.title || item.id) + '</span>' +
+        '<span class="sub">' + esc(item.channel || '') + (item.duration ? ' · ' + esc(item.duration) : '') + '</span></span>';
+      button.addEventListener('click', () => openSongActions(item));
       container.appendChild(button);
     }
   };
 
-  const queue = async (videoId) => {
+  const itemPayload = (item) => ({
+    itemId: (((globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') && globalThis.crypto.randomUUID()) || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)),
+    videoId: item.id,
+    title: item.title || item.id,
+    ...(item.channel ? { channel: item.channel } : {}),
+    ...(item.duration ? { duration: item.duration } : {}),
+    ...(item.thumbnail ? { thumbnail: item.thumbnail } : {})
+  });
+  const openSongActions = (item) => {
+    selectedSong = item;
+    $('song-actions-title').textContent = item.title || item.id;
+    $('song-actions').showModal();
+  };
+  const queue = async (item, path = '/queue', success = 'Added to the queue!') => {
     setStatus('control-status', 'Adding…');
     try {
-      // crypto.randomUUID is unavailable on insecure (plain http) origins, so fall back.
-      const itemId = (crypto.randomUUID && crypto.randomUUID()) ||
-        Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-      const response = await api('/queue', { method: 'POST', body: JSON.stringify({ itemId, videoId }) });
+      const response = await api(path, { method: 'POST', body: JSON.stringify(itemPayload(item)) });
       if (response.status === 401) { tokenRow.hidden = false; throw new Error('bad token'); }
-      setStatus('control-status', response.ok ? 'Added to the queue!' : 'Queue failed', !response.ok);
+      setStatus('control-status', response.ok ? success : 'Queue failed', !response.ok);
       refresh();
-    } catch (error) { setStatus('control-status', 'Queue failed', true); }
+    } catch (error) { setStatus('control-status', 'Queue failed (' + (error && error.message ? error.message : 'error') + ')', true); }
   };
+
+  $('action-add').addEventListener('click', () => { $('song-actions').close(); if (selectedSong) queue(selectedSong); });
+  $('action-next').addEventListener('click', () => { $('song-actions').close(); if (selectedSong) queue(selectedSong, '/queue/next', 'Set to play next!'); });
+  $('action-now').addEventListener('click', () => {
+    $('song-actions').close();
+    if (!selectedSong) return;
+    $('play-now-confirm-title').textContent = 'Interrupt and play “' + (selectedSong.title || selectedSong.id) + '” now?';
+    $('play-now-confirm').showModal();
+  });
+  $('action-cancel').addEventListener('click', () => $('song-actions').close());
+  $('play-now-cancel').addEventListener('click', () => $('play-now-confirm').close());
+  $('play-now-confirm-button').addEventListener('click', () => {
+    $('play-now-confirm').close();
+    if (selectedSong) queue(selectedSong, '/queue/play-now', 'Playing now!');
+  });
+  for (const dialog of [$('song-actions'), $('play-now-confirm')]) dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+
+  let suggestTimer;
+  $('karaoke-search').addEventListener('input', () => {
+    clearTimeout(suggestTimer);
+    const query = $('karaoke-search').value.trim();
+    if (!query) { $('search-suggestions').textContent = ''; return; }
+    suggestTimer = setTimeout(async () => {
+      try {
+        const response = await api('/suggest?q=' + encodeURIComponent(query));
+        if (!response.ok) throw new Error('suggest failed');
+        const remote = (await response.json()).suggestions || [];
+        const recent = JSON.parse(localStorage.getItem(recentKey) || '[]').filter((value) => value.toLowerCase().startsWith(query.toLowerCase()));
+        const seen = new Set();
+        const values = [...recent, ...remote].filter((value) => { const key = value.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 8);
+        $('search-suggestions').innerHTML = values.map((value) => '<button type="button" class="suggestion" role="option" data-value="' + esc(value) + '">' + esc(value) + '</button>').join('');
+      } catch { $('search-suggestions').textContent = ''; }
+    }, 250);
+  });
+  $('search-suggestions').addEventListener('click', (event) => {
+    const button = event.target.closest('.suggestion');
+    if (!button) return;
+    $('karaoke-search').value = button.getAttribute('data-value') || '';
+    $('search-suggestions').textContent = '';
+    $('search-form').requestSubmit();
+  });
+  document.addEventListener('click', (event) => { if (!event.target.closest('.search-wrap')) $('search-suggestions').textContent = ''; });
 
   const card = (item) => '<div class="queued"><span class="meta">' +
     '<span class="title">' + (item.title || item.videoId) + '</span>' +
     '<span class="sub">' + (item.channel || '') + '</span></span></div>';
   const queueCard = (item, position) => '<div class="queued"><span class="meta">' +
-    '<span class="title">' + item.videoId + '</span></span>' +
+    '<span class="title">' + esc(item.title || item.videoId) + '</span><span class="sub">' + esc(item.channel || '') + (item.duration ? ' · ' + esc(item.duration) : '') + '</span></span>' +
     '<span class="queue-actions">' +
     '<button class="secondary queue-up" type="button" data-item-id="' + item.itemId + '" data-position="' + position + '" aria-label="Move up">↑</button>' +
     '<button class="secondary queue-down" type="button" data-item-id="' + item.itemId + '" data-position="' + position + '" aria-label="Move down">↓</button>' +
@@ -189,8 +282,8 @@ export function guestPage(roomId: string): string {
       if (next === lastStatus) return;
       lastStatus = next;
       const now = status.current
-        ? '<div class="queued"><span class="meta"><span class="title">' + status.current.videoId + '</span>' +
-          '<span class="sub">playing now</span></span></div>'
+        ? '<div class="queued"><span class="meta"><span class="title">' + esc(status.current.title || status.current.videoId) + '</span>' +
+          '<span class="sub">' + esc(status.current.channel || 'playing now') + (status.current.duration ? ' · ' + esc(status.current.duration) : '') + '</span></span></div>'
         : '<div class="result-card-empty">Nothing yet — queue something!</div>';
       $('now-playing').innerHTML = now;
       $('queue-list').innerHTML = (status.queue || []).map(queueCard).join('');

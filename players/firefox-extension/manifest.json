@@ -7,5 +7,6 @@
   "background": { "scripts": ["background.js"] },
   "options_ui": { "page": "options.html", "open_in_tab": true },
   "content_scripts": [{ "matches": ["https://www.youtube.com/watch*"] , "js": ["content.js"], "run_at": "document_idle" }],
+  "web_accessible_resources": ["page-bridge.js"],
   "browser_specific_settings": { "gecko": { "id": "local-karaoke-player@localhost", "data_collection_permissions": { "required": ["none"] } } }
 }
