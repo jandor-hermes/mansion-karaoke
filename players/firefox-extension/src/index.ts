@@ -20,9 +20,10 @@ export class CommandRouter {
             if (state.tabId === null) {
                 const tab = await this.tabs.create({ url, active: true });
                 state.tabId = tab.id ?? null;
+                console.debug('[karaoke-player] created YouTube tab', { tabId: state.tabId, url });
             } else {
-                try { await this.tabs.get(state.tabId); await this.tabs.update(state.tabId, { url, active: true }); }
-                catch { const tab = await this.tabs.create({ url, active: true }); state.tabId = tab.id ?? null; }
+                try { await this.tabs.get(state.tabId); console.debug('[karaoke-player] reusing YouTube tab', { tabId: state.tabId }); await this.tabs.update(state.tabId, { url, active: true }); }
+                catch (error) { console.debug('[karaoke-player] existing tab unavailable; creating YouTube tab', { error }); const tab = await this.tabs.create({ url, active: true }); state.tabId = tab.id ?? null; }
             }
             state.itemId = command.itemId; state.videoId = command.videoId; state.roomId = command.roomId; state.status = 'loading';
             return;
