@@ -3,15 +3,18 @@
   // players/firefox-extension/src/content.ts
   var video = () => document.querySelector("video");
   function installYouTubeContentScript(send = (event) => browser.runtime.sendMessage(event)) {
-    const report = (type) => {
-      const element = video();
-      if (element) send({ type, position: element.currentTime });
-    };
+    const report = (type, element) => send({
+      type,
+      position: element.currentTime,
+      ...type === "error" ? { code: "MEDIA_ERROR", message: "Video playback error" } : {}
+    });
     const attach = () => {
       const element = video();
       if (!element || element.dataset.karaokeBound) return;
       element.dataset.karaokeBound = "true";
-      for (const event of ["loadedmetadata", "playing", "pause", "ended", "error"]) element.addEventListener(event, () => report(event === "loadedmetadata" ? "ready" : event));
+      for (const event of ["loadedmetadata", "playing", "pause", "ended", "error"]) {
+        element.addEventListener(event, () => report(event === "loadedmetadata" ? "ready" : event, element));
+      }
     };
     const observer = new MutationObserver(attach);
     observer.observe(document.documentElement, { childList: true, subtree: true });
