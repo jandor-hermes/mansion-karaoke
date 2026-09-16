@@ -39,7 +39,12 @@ export function createControllerClient(options: { baseUrl: string; token: string
         async poll(after: number) {
             const response = await fetcher(`${baseUrl}/command?after=${after}`, { headers, cache: 'no-store' });
             if (!response.ok) throw new Error(`Controller poll failed: ${response.status}`);
-            return response.json() as Promise<{ command: PlaybackCommand | null }>;
+            const payload: unknown = await response.json();
+            if (!payload || typeof payload !== 'object' || !('command' in payload) || !('sequence' in payload)) throw new Error('Malformed controller response');
+            const value = payload as { command: unknown; sequence: unknown };
+            if (value.command !== null) playbackCommandSchema.parse(value.command);
+            if (typeof value.sequence !== 'number' || !Number.isInteger(value.sequence) || value.sequence < 0) throw new Error('Malformed controller response');
+            return { command: value.command as PlaybackCommand | null, sequence: value.sequence };
         },
         async publish(event: PlaybackEvent) {
             const valid = playbackEventSchema.parse(event);
