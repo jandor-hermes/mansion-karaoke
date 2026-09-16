@@ -202,6 +202,50 @@ describe('autosuggestions', () => {
     });
 });
 
+describe('queue history and direct selection', () => {
+    it('records completed and skipped songs in newest-first history', async () => {
+        const plane = await start();
+        const first = { ...item('first'), title: 'First Song' };
+        const second = { ...item('second'), title: 'Second Song' };
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(first) });
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(second) });
+        await request(plane, '/events', { method: 'POST', body: JSON.stringify({ type: 'ended', roomId: 'room-1', sequence: 1, timestamp: 2, itemId: first.itemId, videoId: first.videoId }) });
+        await request(plane, '/control/skip', { method: 'POST' });
+
+        const status = await json(await request(plane, '/status'));
+        expect(status.history).toEqual([
+            { ...second, completedAt: expect.any(Number), reason: 'skipped' },
+            { ...first, completedAt: 2, reason: 'ended' },
+        ]);
+    });
+
+    it('plays a selected queued item without reordering the remaining queue', async () => {
+        const plane = await start();
+        for (const videoId of ['first', 'second', 'third', 'fourth']) {
+            await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item(videoId)) });
+        }
+
+        const response = await request(plane, '/queue/play', { method: 'POST', body: JSON.stringify({ itemId: 'item-third' }) });
+        expect(response.status).toBe(200);
+        const body = await json(response);
+        expect(body.current).toEqual(item('third'));
+        expect(body.queue).toEqual([item('second'), item('fourth')]);
+        expect(body.history[0]).toMatchObject({ ...item('first'), reason: 'replaced' });
+
+        const interrupt = await json(await request(plane, '/command?after=1'));
+        expect(interrupt.command.type).toBe('skip');
+        const play = await json(await request(plane, `/command?after=${interrupt.sequence}`));
+        expect(play.command).toMatchObject({ type: 'play', itemId: 'item-third', videoId: 'third' });
+    });
+
+    it('rejects direct play for an unknown or currently playing item', async () => {
+        const plane = await start();
+        await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
+        expect((await request(plane, '/queue/play', { method: 'POST', body: JSON.stringify({ itemId: 'missing' }) })).status).toBe(404);
+        expect((await request(plane, '/queue/play', { method: 'POST', body: JSON.stringify({ itemId: 'item-first' }) })).status).toBe(409);
+    });
+});
+
 describe('queue removal and reordering', () => {
     it('removes the requested queued item and returns the updated queue', async () => {
         const plane = await start();

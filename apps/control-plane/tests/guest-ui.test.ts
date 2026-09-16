@@ -92,6 +92,9 @@ describe('guest UI page', () => {
         expect(html).toContain('toast');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-label="Pause playback"');
+        expect(html).toContain('history-list');
+        expect(html).toContain('queue-play');
+        expect(html).toContain('/queue/play');
         expect(html).toContain('localStorage');            // token storage
         expect(html).toContain('party-room');              // room name in header
         expect(html).toContain('viewport');                // phone-friendly

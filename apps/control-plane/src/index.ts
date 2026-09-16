@@ -81,6 +81,7 @@ export function createControlPlane(options: Options): ControlPlane {
     const search = options.search ?? createUnavailableSearchAdapter();
     const suggest = options.suggest;
     const queue: QueueItem[] = [];
+    const history: Array<QueueItem & { completedAt: number; reason: 'ended' | 'skipped' | 'replaced' }> = [];
     const commands: Array<{ sequence: number; command: PlaybackCommand }> = [];
     let current: QueueItem | null = null;
     let sequence = 0;
@@ -97,7 +98,11 @@ export function createControlPlane(options: Options): ControlPlane {
         if (current) issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
     };
     const hasItemId = (itemId: string) => current?.itemId === itemId || queue.some((item) => item.itemId === itemId);
-    const skip = () => { if (current) { issue(commandFor('skip')); current = null; startNext(); } };
+    const remember = (item: QueueItem, reason: 'ended' | 'skipped' | 'replaced', completedAt = Date.now()) => {
+        history.unshift({ ...item, completedAt, reason });
+        if (history.length > 100) history.length = 100;
+    };
+    const skip = () => { if (current) { issue(commandFor('skip')); remember(current, 'skipped'); current = null; startNext(); } };
     const body = async (request: IncomingMessage) => {
         let data = ''; for await (const chunk of request) data += chunk;
         return data ? JSON.parse(data) : {};
@@ -128,7 +133,7 @@ export function createControlPlane(options: Options): ControlPlane {
         if (request.headers.authorization !== `Bearer ${options.token}`) return send(response, 401, { error: 'unauthorized' });
         const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
-            if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, current, queue, sequence });
+            if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, current, queue, history, sequence });
             if (request.method === 'POST' && urlObject.pathname === '/search') {
                 const value = await body(request) as { query?: unknown; continuation?: unknown };
                 if (typeof value.query !== 'string' || value.query.trim().length === 0) return send(response, 400, { error: 'query required' });
@@ -181,11 +186,23 @@ export function createControlPlane(options: Options): ControlPlane {
             if (request.method === 'POST' && urlObject.pathname === '/queue/play-now') {
                 const value = parseQueueItem(await body(request));
                 if (!value) return send(response, 400, { error: 'valid itemId, videoId, and string metadata required' });
-                if (hasItemId(value.itemId)) return send(response, 200, { current, queue });
-                if (current) issue(commandFor('skip'));
+                if (hasItemId(value.itemId)) return send(response, 200, { current, queue, history });
+                if (current) { issue(commandFor('skip')); remember(current, 'replaced'); }
                 current = value;
                 issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
-                return send(response, 201, { current, queue });
+                return send(response, 201, { current, queue, history });
+            }
+            if (request.method === 'POST' && urlObject.pathname === '/queue/play') {
+                const value = await body(request) as { itemId?: unknown };
+                if (typeof value.itemId !== 'string' || !value.itemId) return send(response, 400, { error: 'itemId required' });
+                if (current?.itemId === value.itemId) return send(response, 409, { error: 'item is already playing' });
+                const index = queue.findIndex((item) => item.itemId === value.itemId);
+                if (index === -1) return send(response, 404, { error: 'item not found in queue' });
+                const [selected] = queue.splice(index, 1);
+                if (current) { issue(commandFor('skip')); remember(current, 'replaced'); }
+                current = selected;
+                issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
+                return send(response, 200, { current, queue, history });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/remove') {
                 const value = await body(request) as { itemId?: unknown };
@@ -210,7 +227,7 @@ export function createControlPlane(options: Options): ControlPlane {
             }
             if (request.method === 'POST' && urlObject.pathname === '/events') {
                 const event = playbackEventSchema.parse(await body(request)) as PlaybackEvent;
-                if (event.type === 'ended' && current?.itemId === event.itemId) { current = null; startNext(); }
+                if (event.type === 'ended' && current?.itemId === event.itemId) { remember(current, 'ended', event.timestamp); current = null; startNext(); }
                 return send(response, 204);
             }
             if (request.method === 'POST' && urlObject.pathname === '/control/skip') { skip(); return send(response, 204); }
