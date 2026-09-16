@@ -13,11 +13,12 @@ export type QueueItem = {
     channel?: string;
     duration?: string;
     thumbnail?: string;
+    requestedBy?: string;
 };
 export type SuggestionAdapter = { suggest(query: string): Promise<string[]> };
 type Options = { token: string; roomId: string; search?: SearchAdapter; suggest?: SuggestionAdapter; bind?: string };
 
-const queueMetadataFields = ['title', 'channel', 'duration', 'thumbnail'] as const;
+const queueMetadataFields = ['title', 'channel', 'duration', 'thumbnail', 'requestedBy'] as const;
 
 function parseQueueItem(value: unknown): QueueItem | null {
     if (!value || typeof value !== 'object') return null;

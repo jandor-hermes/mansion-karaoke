@@ -58,6 +58,10 @@ describe('guest UI page', () => {
         expect(response.headers.get('content-type')).toContain('text/html');
         const html = await response.text();
         expect(html).toContain('karaoke-search');          // search input
+        expect(html).toContain('id="token-input" type="text"');
+        expect(html).toContain('name-input');
+        expect(html).toContain('karaoke-name-party-room');
+        expect(html).toContain('requestedBy');
         expect(html).toContain('now-playing');            // now playing section
         expect(html).toContain('queue-list');              // queue list
         expect(html).toContain('/search');                 // API wiring

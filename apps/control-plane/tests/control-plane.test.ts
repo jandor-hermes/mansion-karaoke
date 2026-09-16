@@ -63,6 +63,7 @@ describe('local control-plane vertical slice', () => {
             channel: 'Singer',
             duration: '3:45',
             thumbnail: 'https://img.example/first.jpg',
+            requestedBy: 'Alex',
         };
         const requestItem = { ...rich, clientOnly: 'discard me' };
         expect((await request(plane, '/queue', { method: 'POST', body: JSON.stringify(requestItem) })).status).toBe(201);
@@ -74,11 +75,12 @@ describe('local control-plane vertical slice', () => {
         expect(play).not.toHaveProperty('channel');
         expect(play).not.toHaveProperty('duration');
         expect(play).not.toHaveProperty('thumbnail');
+        expect(play).not.toHaveProperty('requestedBy');
     });
 
     it('rejects malformed optional queue metadata consistently', async () => {
         const plane = await start();
-        for (const field of ['title', 'channel', 'duration', 'thumbnail']) {
+        for (const field of ['title', 'channel', 'duration', 'thumbnail', 'requestedBy']) {
             const response = await request(plane, '/queue', {
                 method: 'POST',
                 body: JSON.stringify({ ...item(field, `item-${field}`), [field]: 42 }),
