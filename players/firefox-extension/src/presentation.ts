@@ -1,5 +1,25 @@
 export const PRESENTATION_CLASS = 'karaoke-video-presentation';
 export const PRESENTATION_STYLE_ID = 'karaoke-video-presentation-style';
+export const YOUTUBE_FULLSCREEN_BUTTON_SELECTOR = 'button.ytp-fullscreen-button[aria-label*="Full screen"]';
+
+type FullscreenButtonDocument = { querySelector(selector: string): { click(): void } | null };
+type DiagnosticLogger = (message: string, details: Record<string, unknown>) => void;
+
+export function clickYouTubeFullscreenButton(documentLike: FullscreenButtonDocument, logger: DiagnosticLogger = (message, details) => console.debug(`[karaoke-player] ${message}`, details)): boolean {
+    const button = documentLike.querySelector(YOUTUBE_FULLSCREEN_BUTTON_SELECTOR);
+    if (!button) {
+        logger('YouTube fullscreen button not found', { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR });
+        return false;
+    }
+    logger('YouTube fullscreen button located', { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, button });
+    try {
+        button.click();
+        return true;
+    } catch (error) {
+        logger('YouTube fullscreen button click failed', { selector: YOUTUBE_FULLSCREEN_BUTTON_SELECTOR, error });
+        return false;
+    }
+}
 
 export const presentationMessage = (message: unknown): boolean =>
     Boolean(message && typeof message === 'object' && (message as { type?: unknown }).type === 'fullscreen');
