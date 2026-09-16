@@ -8,20 +8,21 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(['baseUrl', 'token']));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
-    let sequence = 0;
+    let commandCursor = 0;
+    let eventSequence = 0;
     let timer: ReturnType<typeof setInterval> | null = null;
     let onMessageInstalled = false;
 
     const poll = async () => {
         if (!client) { console.debug('[karaoke-player] poll skipped: no controller token'); return; }
         try {
-            console.debug('[karaoke-player] polling controller', { baseUrl: activeConfig.baseUrl, after: sequence });
-            const result = await client.poll(sequence);
+            console.debug('[karaoke-player] polling controller', { baseUrl: activeConfig.baseUrl, after: commandCursor });
+            const result = await client.poll(commandCursor);
             if (result.command) {
                 await router.route(result.command, state);
                 console.debug('[karaoke-player] command applied', { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
-                sequence = result.sequence;
-            } else sequence = Math.max(sequence, result.sequence);
+                commandCursor = result.sequence;
+            } else commandCursor = Math.max(commandCursor, result.sequence);
         } catch (error) { console.error('[karaoke-player] controller poll failed', error); }
     };
     const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
@@ -34,10 +35,10 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     };
     const onMessage = (rawMessage: unknown) => {
         if (!client) return;
-        const event = enrichContentEvent(rawMessage as { type: string; position?: number; code?: string; message?: string }, state, sequence, Date.now());
+        const event = enrichContentEvent(rawMessage as { type: string; position?: number; code?: string; message?: string }, state, eventSequence, Date.now());
         if (event) {
             console.debug('[karaoke-player] content event received', event);
-            sequence = event.sequence;
+            eventSequence = event.sequence;
             void client.publish(event).then(() => console.debug('[karaoke-player] content event published', { type: event.type, sequence: event.sequence })).catch((error) => console.error('[karaoke-player] event publish failed', error));
         }
     };
