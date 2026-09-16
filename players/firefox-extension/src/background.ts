@@ -50,6 +50,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     };
     const onMessage = (rawMessage: unknown) => {
         if (!client) return;
+        if (rawMessage && typeof rawMessage === 'object' && (rawMessage as { type?: unknown }).type === 'getJoinInfo') return client.joinInfo();
         const event = enrichContentEvent(rawMessage as { type: string; position?: number; code?: string; message?: string }, state, eventSequence, Date.now());
         if (event) {
             console.debug('[karaoke-player] content event received', event);

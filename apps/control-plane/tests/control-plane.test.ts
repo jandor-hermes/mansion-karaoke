@@ -38,6 +38,18 @@ describe('local control-plane vertical slice', () => {
         expect(response.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('authorization');
     });
 
+    it('returns an authenticated one-scan join URL carrying the party token in its fragment', async () => {
+        const plane = await start();
+        const response = await request(plane, '/join-info');
+        expect(response.status).toBe(200);
+        const { joinUrl } = await json(response);
+        const parsed = new URL(joinUrl);
+        expect(parsed.protocol).toBe('http:');
+        expect(parsed.port).toBe(new URL(plane.url).port);
+        expect(new URLSearchParams(parsed.hash.slice(1)).get('token')).toBe('test-token');
+        expect((await fetch(`${plane.url}/join-info`)).status).toBe(401);
+    });
+
     it('enqueues two videos and emits an idempotent play-next command', async () => {
         const plane = await start();
         const first = await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });

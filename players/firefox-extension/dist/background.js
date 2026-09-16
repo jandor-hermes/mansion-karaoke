@@ -4223,6 +4223,13 @@
     const fetcher = options.fetcher ?? fetch;
     const headers = { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" };
     return {
+      async joinInfo() {
+        const response = await fetcher(`${baseUrl}/join-info`, { headers, cache: "no-store" });
+        if (!response.ok) throw new Error(`Join info failed: ${response.status}`);
+        const payload = await response.json();
+        if (!payload || typeof payload !== "object" || typeof payload.joinUrl !== "string") throw new Error("Malformed join info response");
+        return payload;
+      },
       async poll(after) {
         const response = await fetcher(`${baseUrl}/command?after=${after}`, { headers, cache: "no-store" });
         if (!response.ok) throw new Error(`Controller poll failed: ${response.status}`);
@@ -4345,6 +4352,7 @@
     };
     const onMessage = (rawMessage) => {
       if (!client) return;
+      if (rawMessage && typeof rawMessage === "object" && rawMessage.type === "getJoinInfo") return client.joinInfo();
       const event = enrichContentEvent(rawMessage, state, eventSequence, Date.now());
       if (event) {
         console.debug("[karaoke-player] content event received", event);

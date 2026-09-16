@@ -164,6 +164,8 @@ export function guestPage(roomId: string): string {
   const recentKey = 'karaoke-recent-searches';
   let token = null, guestName = '', selectedSong = null, selectedQueueItem = null, allResults = [], queuedItems = [], visibleResults = 0, queueLength = 0, volume = .75, playing = true, toastTimer, suggestSequence = 0;
   try { token = localStorage.getItem(tokenKey) || localStorage.getItem(legacyTokenKey); guestName=localStorage.getItem(nameKey)||''; } catch {}
+  const scannedToken = new URLSearchParams(location.hash.slice(1)).get('token');
+  if(scannedToken){token=scannedToken;history.replaceState(null,'',location.pathname+location.search);}
   const api = (path, init) => fetch(path, {...init, headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...(init && init.headers || {})}});
   const setStatus = (id,message,error) => { const node=$(id); node.textContent=message||''; node.classList.toggle('error',!!error); };
   const showToast = (message,error) => { clearTimeout(toastTimer); const node=$('toast'); node.textContent=message; node.classList.toggle('error',!!error); node.hidden=false; toastTimer=setTimeout(()=>{node.hidden=true;},2600); };
