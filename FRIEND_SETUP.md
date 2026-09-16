@@ -2,6 +2,8 @@
 
 This is the simplest way to host Mansion Karaoke from a Mac. The app contains the controller and Firefox player files, so the host does **not** need Git, Node.js, Bun, Docker, or a developer checkout. Guests need only a phone on the same Wi-Fi.
 
+Hosting the trusted-friend beta on a 64-bit Intel/AMD Windows computer? Use **[Windows Friend Setup](FRIEND_SETUP_WINDOWS.md)**. The Windows package is planned and should be treated as available only when a Windows ZIP and matching checksum are published on GitHub Releases.
+
 ## Download the Mac app
 
 1. Open the latest [Mansion Karaoke release](https://github.com/jandor-hermes/mansion-karaoke/releases/latest).

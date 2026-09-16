@@ -4,9 +4,9 @@ A local-network karaoke host for house parties. One Mac runs the controller and 
 
 ## Current status
 
-Mansion Karaoke is a private beta for macOS. A self-contained Mac app runs the local controller and guides the host through loading the temporary Firefox extension. Guests install nothing.
+Mansion Karaoke is a private beta for macOS. A self-contained Mac app runs the local controller and guides the host through loading the temporary Firefox extension. Guests install nothing. A trusted-friend Windows x64 package is planned but should not be treated as available until its ZIP and checksum are published on GitHub Releases.
 
-For the complete host walkthrough, see **[Friend Setup](FRIEND_SETUP.md)**.
+For the complete host walkthrough, see **[Mac Friend Setup](FRIEND_SETUP.md)** or **[Windows Friend Setup](FRIEND_SETUP_WINDOWS.md)**.
 
 ## Quick start
 
@@ -76,6 +76,7 @@ packages/playback-protocol/         shared command and event schemas
 scripts/karaoke-dev.sh              developer setup and launcher
 packaging/macos/                    native launcher and app bundle builder
 FRIEND_SETUP.md                     shareable host walkthrough
+FRIEND_SETUP_WINDOWS.md             Windows x64 trusted-friend beta walkthrough
 DISTRIBUTION_AND_UPDATES.md         future packaging and update notes
 ```
 

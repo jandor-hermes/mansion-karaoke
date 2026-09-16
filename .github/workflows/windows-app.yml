@@ -1,0 +1,93 @@
+name: Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/windows-host-beta
+    paths:
+      - '.github/workflows/windows-app.yml'
+      - 'apps/control-plane/**'
+      - 'packages/playback-protocol/**'
+      - 'players/firefox-extension/**'
+      - 'packaging/windows/**'
+      - 'FRIEND_SETUP_WINDOWS.md'
+      - 'LICENSE'
+      - 'NOTICE.md'
+      - 'package.json'
+      - 'bun.lock'
+  pull_request:
+    paths:
+      - '.github/workflows/windows-app.yml'
+      - 'apps/control-plane/**'
+      - 'packages/playback-protocol/**'
+      - 'players/firefox-extension/**'
+      - 'packaging/windows/**'
+      - 'FRIEND_SETUP_WINDOWS.md'
+      - 'LICENSE'
+      - 'NOTICE.md'
+      - 'package.json'
+      - 'bun.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Setup MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install root dependencies
+        run: bun install --no-save
+
+      - name: Install Firefox extension dependencies separately
+        run: bun install --cwd players/firefox-extension --no-save
+
+      - name: Test controller
+        run: bun --cwd apps/control-plane run test
+
+      - name: Test and verify Firefox extension
+        shell: pwsh
+        run: |
+          bun run firefox:test
+          bun run firefox:check
+          bun run firefox:build
+          bun run firefox:verify
+
+      - name: Run focused Windows package contract
+        run: node --test packaging/windows/windows-package.test.mjs
+
+      - name: Build self-contained Windows package
+        shell: pwsh
+        run: ./packaging/windows/build-app.ps1 -OutputDirectory dist/windows
+
+      - name: Execute packaged Windows runtime verification
+        shell: pwsh
+        run: ./packaging/windows/app-bundle.test.ps1 -OutputDirectory dist/windows
+
+      - name: Upload Windows ZIP and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mansion-Karaoke-Windows-x64
+          path: |
+            dist/windows/Mansion-Karaoke-*-Windows-x64.zip
+            dist/windows/Mansion-Karaoke-*-Windows-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
