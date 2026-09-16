@@ -6,3 +6,5 @@ node_modules
 
 # Tizen packaging output
 apps/tizen/dist/
+
+apps/control-plane/dist/
