@@ -38,7 +38,7 @@ Keep the Mansion Karaoke window open while hosting.
 
 Firefox opens or focuses the dedicated karaoke display. A join QR code appears before the first song starts.
 
-> Firefox removes temporary add-ons whenever Firefox quits. Repeat this section after restarting Firefox. The app keeps the same party token between launches.
+> Firefox removes temporary add-ons whenever Firefox quits. Repeat this section after restarting Firefox. The app keeps the same eight-character party token between launches.
 
 ## Start the party
 

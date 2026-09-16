@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const workflow = readFileSync(path.join(root, '.github/workflows/macos-app.yml'), 'utf8');
 const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
 const friendSetup = readFileSync(path.join(root, 'FRIEND_SETUP.md'), 'utf8');
+const launcher = readFileSync(path.join(root, 'packaging/macos/Launcher.swift'), 'utf8');
 
 test('workflow installs the root and standalone Firefox dependency graphs', () => {
   assert.match(workflow, /run: \|\n\s+bun install --no-save\n\s+bun install --cwd players\/firefox-extension --no-save/);
@@ -34,4 +35,16 @@ test('friend setup reveals the extension before opening the file picker', () => 
   const reveal = friendSetup.indexOf('Select **Reveal Extension**');
   const picker = friendSetup.indexOf('Select **Load Temporary Add-on…**');
   assert.ok(reveal >= 0 && picker >= 0 && reveal < picker);
+});
+
+test('Firefox setup sends the raw internal page through the Firefox executable', () => {
+  assert.match(launcher, /appendingPathComponent\("Contents\/MacOS\/firefox"\)/);
+  assert.match(launcher, /process\.arguments = \["--new-tab", "about:debugging#\/runtime\/this-firefox"\]/);
+  assert.doesNotMatch(launcher, /openApplication\(at: firefox/);
+});
+
+test('port conflicts have actionable launcher copy', () => {
+  assert.ok(launcher.includes('Port \\(controllerPort) is already in use'));
+  assert.match(launcher, /Quit the other controller/);
+  assert.match(launcher, /controllerFailureMessage\(from:/);
 });

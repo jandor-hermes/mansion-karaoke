@@ -82,6 +82,7 @@ swiftc \
   -target "$SWIFT_TARGET" \
   -framework AppKit \
   -framework Foundation \
+  -framework Security \
   "$ROOT/packaging/macos/Launcher.swift" \
   -o "$MACOS/Mansion Karaoke"
 

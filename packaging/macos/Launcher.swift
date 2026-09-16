@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Security
 
 private let controllerName = "mansion-controller"
 private let extensionDirectoryName = "firefox-extension"
@@ -13,8 +14,10 @@ private let controllerPort: Int = {
 private struct SelfTestReport: Codable {
     let bundleIdentifier: String
     let controllerPort: Int
+    let controllerPortAvailable: Bool
     let controllerExecutable: Bool
     let extensionManifest: Bool
+    let controllerFailureMessage: String?
 }
 
 private func bundledControllerURL() -> URL? {
@@ -25,16 +28,62 @@ private func bundledExtensionURL() -> URL? {
     Bundle.main.resourceURL?.appendingPathComponent(extensionDirectoryName, isDirectory: true)
 }
 
+private func makePartyToken() throws -> String {
+    let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+    var bytes = [UInt8](repeating: 0, count: 8)
+    guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+        throw NSError(domain: bundleIdentifier, code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not generate a secure party token."])
+    }
+    return String(bytes.map { alphabet[Int($0) & 31] })
+}
+
+private func isCurrentPartyToken(_ token: String) -> Bool {
+    token.range(of: "^[A-HJ-NP-Z2-9]{8}$", options: .regularExpression) != nil
+}
+
+private func controllerPortIsAvailable() -> Bool {
+    let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+    guard descriptor >= 0 else { return false }
+    defer { close(descriptor) }
+
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = in_port_t(controllerPort).bigEndian
+    address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+    let result = withUnsafePointer(to: &address) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        }
+    }
+    return result != 0
+}
+
+private func portConflictMessage() -> String {
+    "Port \(controllerPort) is already in use. Quit the other controller or app using that port, then reopen Mansion Karaoke."
+}
+
+private func controllerFailureMessage(from applicationSupportURL: URL) -> String? {
+    let logURL = applicationSupportURL.appendingPathComponent("controller.log")
+    guard let log = try? String(contentsOf: logURL, encoding: .utf8) else { return nil }
+    if log.localizedCaseInsensitiveContains("port \(controllerPort) in use") ||
+        log.localizedCaseInsensitiveContains("address already in use") ||
+        log.localizedCaseInsensitiveContains("EADDRINUSE") {
+        return portConflictMessage()
+    }
+    return nil
+}
+
 private func loadOrCreateToken(in applicationSupportURL: URL) throws -> String {
     let tokenURL = applicationSupportURL.appendingPathComponent("party-token")
     if FileManager.default.fileExists(atPath: tokenURL.path) {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
         if let existing = try? String(contentsOf: tokenURL, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines), !existing.isEmpty {
+            .trimmingCharacters(in: .whitespacesAndNewlines), isCurrentPartyToken(existing) {
             return existing
         }
     }
-    let token = (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
+    let token = try makePartyToken()
     try token.write(to: tokenURL, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
     return token
@@ -51,6 +100,7 @@ private func prepareControllerLog(in applicationSupportURL: URL) throws -> FileH
 }
 
 if CommandLine.arguments.contains("--self-test") {
+    var failureMessage: String?
     if let supportPath = ProcessInfo.processInfo.environment["MANSION_KARAOKE_SELF_TEST_SUPPORT_DIR"] {
         let supportURL = URL(fileURLWithPath: supportPath, isDirectory: true)
         try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
@@ -58,13 +108,18 @@ if CommandLine.arguments.contains("--self-test") {
         let log = try prepareControllerLog(in: supportURL)
         try log.close()
     }
+    if let failurePath = ProcessInfo.processInfo.environment["MANSION_KARAOKE_SELF_TEST_FAILURE_DIR"] {
+        failureMessage = controllerFailureMessage(from: URL(fileURLWithPath: failurePath, isDirectory: true))
+    }
     let controller = bundledControllerURL()
     let manifest = bundledExtensionURL()?.appendingPathComponent("manifest.json")
     let report = SelfTestReport(
         bundleIdentifier: Bundle.main.bundleIdentifier ?? "",
         controllerPort: controllerPort,
+        controllerPortAvailable: controllerPortIsAvailable(),
         controllerExecutable: controller.map { FileManager.default.isExecutableFile(atPath: $0.path) } ?? false,
-        extensionManifest: manifest.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        extensionManifest: manifest.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+        controllerFailureMessage: failureMessage
     )
     let data = try JSONEncoder().encode(report)
     print(String(decoding: data, as: UTF8.self))
@@ -91,6 +146,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try installExtensionCopy()
             buildMenu()
             buildWindow()
+            guard controllerPortIsAvailable() else {
+                throw NSError(
+                    domain: bundleIdentifier,
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: portConflictMessage()]
+                )
+            }
             try startController()
             checkController(attempt: 0)
         } catch {
@@ -160,9 +222,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         process.standardError = log
         process.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
-                self?.closeControllerLog()
-                self?.statusLabel?.stringValue = "Stopped (exit \(process.terminationStatus)). See controller.log for details."
-                self?.statusLabel?.textColor = .systemRed
+                guard let self else { return }
+                self.closeControllerLog()
+                let message = controllerFailureMessage(from: self.applicationSupportURL)
+                    ?? "Stopped (exit \(process.terminationStatus)). See controller.log for details."
+                self.statusLabel?.stringValue = message
+                self.statusLabel?.textColor = .systemRed
+                if controllerFailureMessage(from: self.applicationSupportURL) != nil {
+                    let alert = NSAlert()
+                    alert.alertStyle = .critical
+                    alert.messageText = "Mansion Karaoke could not start"
+                    alert.informativeText = message
+                    alert.runModal()
+                }
             }
         }
         do {
@@ -247,7 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(button("Reveal Extension", action: #selector(revealExtension), frame: NSRect(x: 474, y: 230, width: 138, height: 34)))
 
         let instructions = label(
-            "Firefox setup\n1. Click Firefox Setup, then choose This Firefox.\n2. Click Load Temporary Add-on.\n3. Select the revealed manifest.json file.\n4. Open the Mansion Karaoke toolbar button and enter the URL and token above.\n5. Click Save & start. Guests can then scan the QR code on the TV.",
+            "Firefox setup\n1. Click Reveal Extension.\n2. Click Firefox Setup, then Load Temporary Add-on.\n3. Select the revealed manifest.json file.\n4. Open the Mansion Karaoke toolbar button and enter the URL and token above.\n5. Click Save & start. Guests can then scan the QR code on the TV.",
             frame: NSRect(x: 28, y: 70, width: 584, height: 135),
             size: 13,
             bold: false
@@ -304,17 +376,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFirefoxSetup() {
-        guard let firefox = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.mozilla.firefox"),
-              let setup = URL(string: "about:debugging#/runtime/this-firefox") else {
+        guard let firefox = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.mozilla.firefox") else {
             let alert = NSAlert()
             alert.messageText = "Firefox was not found"
             alert.informativeText = "Install Firefox, then reopen Mansion Karaoke."
             alert.runModal()
             return
         }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open([setup], withApplicationAt: firefox, configuration: configuration)
+        let executable = firefox.appendingPathComponent("Contents/MacOS/firefox")
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["--new-tab", "about:debugging#/runtime/this-firefox"]
+        do {
+            try process.run()
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Firefox setup could not open"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
     }
 
     private func showFatalError(_ message: String) {
