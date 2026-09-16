@@ -131,6 +131,11 @@ The exact monorepo split may be adjusted after Phase 0, but these boundaries mus
 - Added provider-neutral `packages/playback-protocol` schemas and inferred TypeScript types for playback commands and sequenced lifecycle events.
 - Focused protocol tests pass; no UI or upstream package changes were made.
 
+## Phase 1 status
+
+- Added a standalone Firefox MV2 provider under `players/firefox-extension` with protocol-validated command routing, authenticated configurable loopback polling, one dedicated YouTube tab, and a YouTube content script for HTML video lifecycle/control.
+- Provider unit tests and TypeScript checks pass. Fullscreen remains a Firefox/window presentation configuration/manual gate; OS keystroke automation is not used.
+
 ## Deliberately out of scope until the core gates pass
 
 - Downloading or caching YouTube media.

@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "name": "Local Karaoke Firefox Player",
+  "version": "0.1.0",
+  "description": "Authenticated local karaoke playback agent for one normal YouTube tab.",
+  "permissions": ["tabs", "storage", "http://127.0.0.1:3010/*", "https://www.youtube.com/*"],
+  "background": { "scripts": ["background.js"] },
+  "content_scripts": [{ "matches": ["https://www.youtube.com/watch*"] , "js": ["content.js"], "run_at": "document_idle" }],
+  "browser_specific_settings": { "gecko": { "id": "local-karaoke-player@localhost", "data_collection_permissions": { "required": ["none"] } } }
+}
