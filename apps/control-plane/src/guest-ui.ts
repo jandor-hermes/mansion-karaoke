@@ -158,7 +158,10 @@ export function guestPage(roomId: string): string {
   const queue = async (videoId) => {
     setStatus('control-status', 'Adding…');
     try {
-      const response = await api('/queue', { method: 'POST', body: JSON.stringify({ itemId: crypto.randomUUID(), videoId }) });
+      // crypto.randomUUID is unavailable on insecure (plain http) origins, so fall back.
+      const itemId = (crypto.randomUUID && crypto.randomUUID()) ||
+        Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      const response = await api('/queue', { method: 'POST', body: JSON.stringify({ itemId, videoId }) });
       if (response.status === 401) { tokenRow.hidden = false; throw new Error('bad token'); }
       setStatus('control-status', response.ok ? 'Added to the queue!' : 'Queue failed', !response.ok);
       refresh();
