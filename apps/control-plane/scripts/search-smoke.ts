@@ -1,14 +1,8 @@
-import { createConfiguredYoutubeSearchAdapter } from '../src/youtube-search.js';
+import { createVkaraInnertubeSearchAdapter, type InnertubeClientLike } from '../src/youtube-search.js';
 
+const fixture = { contents: { sectionListRenderer: { contents: [{ videoRenderer: { videoId: 'fixture-video', title: { simpleText: 'Fixture search result' } } }] } } };
+const client: InnertubeClientLike = { http: { post: async () => ({ data: fixture }) } };
 const query = process.argv.slice(2).join(' ') || 'karaoke';
-if (!process.env.YOUTUBE_API_KEY && !process.env.INNERTUBE_API_KEY) {
-  console.log('SKIP: set YOUTUBE_API_KEY or INNERTUBE_API_KEY to run search smoke');
-  process.exit(0);
-}
-try {
-  const page = await createConfiguredYoutubeSearchAdapter().search(query);
-  console.log(JSON.stringify(page, null, 2));
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-}
+const page = await createVkaraInnertubeSearchAdapter(client).search(query);
+console.log(JSON.stringify({ mode: 'no-key-fixture', query, page }, null, 2));
+console.log('SKIP: live YouTube search is intentionally not exercised');
