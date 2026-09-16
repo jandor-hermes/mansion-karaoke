@@ -4069,7 +4069,8 @@
     commandBase.extend({
       type: external_exports.literal("setVolume"),
       volume: external_exports.number().finite().min(0).max(1)
-    })
+    }),
+    commandBase.extend({ type: external_exports.literal("fullscreen") })
   ]);
   var eventBase = external_exports.object({
     roomId: nonEmptyString,
@@ -4097,12 +4098,13 @@
   ]);
 
   // players/firefox-extension/src/index.ts
-  var createInitialPlayerState = () => ({ tabId: null, status: "idle" });
+  var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle" });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
-    constructor(tabs, sendMessage = async () => void 0) {
+    constructor(tabs, sendMessage = async () => void 0, windows) {
       this.tabs = tabs;
       this.sendMessage = sendMessage;
+      this.windows = windows;
     }
     async route(input, state) {
       const command = playbackCommandSchema.parse(input);
@@ -4112,16 +4114,19 @@
         if (state.tabId === null) {
           const tab = await this.tabs.create({ url, active: true });
           state.tabId = tab.id ?? null;
-          console.debug("[karaoke-player] created YouTube tab", { tabId: state.tabId, url });
+          state.windowId = tab.windowId ?? null;
+          console.debug("[karaoke-player] created YouTube tab", { tabId: state.tabId, windowId: state.windowId, url });
         } else {
           try {
-            await this.tabs.get(state.tabId);
-            console.debug("[karaoke-player] reusing YouTube tab", { tabId: state.tabId });
+            const existing = await this.tabs.get(state.tabId);
+            state.windowId = existing.windowId ?? state.windowId ?? null;
+            console.debug("[karaoke-player] reusing YouTube tab", { tabId: state.tabId, windowId: state.windowId });
             await this.tabs.update(state.tabId, { url, active: true });
           } catch (error) {
             console.debug("[karaoke-player] existing tab unavailable; creating YouTube tab", { error });
             const tab = await this.tabs.create({ url, active: true });
             state.tabId = tab.id ?? null;
+            state.windowId = tab.windowId ?? null;
           }
         }
         state.itemId = command.itemId;
@@ -4132,6 +4137,20 @@
       }
       if (command.type === "skip") {
         state.status = "ended";
+        debug("skip applied");
+        return;
+      }
+      if (command.type === "fullscreen") {
+        if (state.windowId == null || !this.windows) {
+          console.error("[karaoke-player] fullscreen failed: dedicated window unavailable");
+          return;
+        }
+        try {
+          await this.windows.update(state.windowId, { state: "fullscreen" });
+          debug("fullscreen applied", { windowId: state.windowId });
+        } catch (error) {
+          console.error("[karaoke-player] fullscreen failed", { windowId: state.windowId, error });
+        }
         return;
       }
       if (state.tabId === null) return;
@@ -4208,7 +4227,7 @@
   // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message));
+    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);
     let activeConfig = options ?? parseStoredConfig(await browserApi.storage.local.get(["baseUrl", "token"]));
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0;
