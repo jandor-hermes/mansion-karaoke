@@ -147,7 +147,7 @@ The exact monorepo split may be adjusted after Phase 0, but these boundaries mus
 - Added a small, independently callable `SearchAdapter` seam to the local control plane and a token-authenticated `POST /search` route supporting query and continuation requests.
 - Kept the retained vkara Innertube search implementation in `apps/api` untouched; the control plane does not import the API runtime, avoiding implicit Redis/BullMQ/environment startup dependencies.
 - Added fixture/contract tests for normalized results, continuation forwarding, input validation, and the explicit unconfigured-search response.
-- The real vkara adapter wiring and YouTube network smoke test remain an integration/manual gate because the current implementation requires API runtime configuration and Redis-backed result preparation.
+- Added a standalone Innertube adapter at `apps/control-plane/src/youtube-search.ts`, reusing vkara's request shape while avoiding API/Redis runtime coupling. It normalizes video renderers and continuation tokens, reports explicit configuration/upstream errors, and has fixture tests plus an optional config/network smoke command. Redis-backed channel enrichment from `apps/api` remains intentionally outside the control-plane contract; live upstream behavior remains an external gate.
 
 ## Deliberately out of scope until the core gates pass
 
