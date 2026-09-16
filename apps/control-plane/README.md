@@ -20,6 +20,13 @@ The service listens on `127.0.0.1:3010` by default. Set `PORT` to change it. Eve
 - `POST /control/pause`, `/control/resume`, `/control/skip`
 - `POST /control/volume` — JSON `{ "volume": 0.0..1.0 }`
 - `GET /status` — current item, queued items, and command sequence
+- `POST /search` — JSON `{ "query": "karaoke", "continuation": "optional-token" }`; delegates to an injected search adapter. Without one, returns `503 { "error": "search_not_configured" }`.
+
+### Search integration seam
+
+The control plane intentionally does not import the vkara API runtime. Inject a `SearchAdapter` from `apps/control-plane/src/search.ts` when constructing `createControlPlane`. The adapter returns the small normalized `{ items, continuation }` contract. The retained vkara Innertube implementation (`apps/api/src/modules/youtube/fetch-search-page.ts` plus its parser/client) still depends on API aliases, environment, and Redis-backed preparation; wiring it belongs in the API composition layer after those dependencies are supplied. Fixture/contract tests verify the control-plane seam without network access.
+
+Search remains an external/manual gate: YouTube Innertube responses, client configuration, Redis/channel enrichment, and upstream availability were not exercised in this local unit test.
 
 The command sequence is monotonic. A provider can persist its last sequence and resume polling after an extension restart without replaying already-applied commands. Queue authority stays in this service.
 

@@ -142,6 +142,13 @@ The exact monorepo split may be adjusted after Phase 0, but these boundaries mus
 - Added provider event ingestion with ended-event advancement, monotonic command polling sequences, idempotent queue insertion, status reporting, and restart-safe polling semantics.
 - Added integration tests and a runnable README. Automated Phase 2 tests pass; the Firefox fullscreen/window presentation and real YouTube playback remain the manual gate.
 
+## Phase 3 status
+
+- Added a small, independently callable `SearchAdapter` seam to the local control plane and a token-authenticated `POST /search` route supporting query and continuation requests.
+- Kept the retained vkara Innertube search implementation in `apps/api` untouched; the control plane does not import the API runtime, avoiding implicit Redis/BullMQ/environment startup dependencies.
+- Added fixture/contract tests for normalized results, continuation forwarding, input validation, and the explicit unconfigured-search response.
+- The real vkara adapter wiring and YouTube network smoke test remain an integration/manual gate because the current implementation requires API runtime configuration and Redis-backed result preparation.
+
 ## Deliberately out of scope until the core gates pass
 
 - Downloading or caching YouTube media.

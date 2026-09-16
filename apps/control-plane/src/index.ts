@@ -1,12 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src';
+import { createUnavailableSearchAdapter, type SearchAdapter } from './search.js';
 
 export type ControlPlane = { url: string; listen(port: number): Promise<void>; close(): Promise<void> };
 type QueueItem = { itemId: string; videoId: string };
-type Options = { token: string; roomId: string };
+type Options = { token: string; roomId: string; search?: SearchAdapter };
 
 export function createControlPlane(options: Options): ControlPlane {
+    const search = options.search ?? createUnavailableSearchAdapter();
     const queue: QueueItem[] = [];
     const commands: Array<{ sequence: number; command: PlaybackCommand }> = [];
     let current: QueueItem | null = null;
@@ -37,6 +39,17 @@ export function createControlPlane(options: Options): ControlPlane {
         const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
             if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, current, queue, sequence });
+            if (request.method === 'POST' && urlObject.pathname === '/search') {
+                const value = await body(request) as { query?: unknown; continuation?: unknown };
+                if (typeof value.query !== 'string' || value.query.trim().length === 0) return send(response, 400, { error: 'query required' });
+                if (value.continuation !== undefined && typeof value.continuation !== 'string') return send(response, 400, { error: 'continuation must be a string' });
+                try {
+                    return send(response, 200, await search.search(value.query, value.continuation as string | undefined));
+                } catch (error) {
+                    if (error instanceof Error && error.message === 'search_not_configured') return send(response, 503, { error: 'search_not_configured' });
+                    return send(response, 502, { error: 'search_upstream_failed' });
+                }
+            }
             if (request.method === 'GET' && urlObject.pathname === '/command') {
                 const after = Number(urlObject.searchParams.get('after') ?? 0);
                 const next = commands.find((entry) => entry.sequence > after);
