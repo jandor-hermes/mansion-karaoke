@@ -6,6 +6,7 @@ export type YouTubePageAdapter = {
     getHref(): string;
     loadVideoById(videoId: string, position: number): boolean;
     replaceWatchUrl(videoId: string): void;
+    syncMetadata(videoId: string): void | Promise<void>;
     getFullscreenElement(): unknown;
     wait(ms: number): Promise<void>;
 };
@@ -29,11 +30,13 @@ export async function loadVideoInPage(raw: unknown, adapter: YouTubePageAdapter,
         try { return new URL(adapter.getHref()).searchParams.get('v') === command.videoId && adapter.getVideoId() === command.videoId; }
         catch { return false; }
     }, attempts)) {
+        await adapter.syncMetadata(command.videoId);
         return { ok: true, mode: 'yt-navigate', videoId: command.videoId, fullscreenRetained: retained(fullscreen, adapter) };
     }
     if (adapter.loadVideoById(command.videoId, command.position)
         && await waitFor(adapter, () => adapter.getVideoId() === command.videoId, attempts)) {
         adapter.replaceWatchUrl(command.videoId);
+        await adapter.syncMetadata(command.videoId);
         return { ok: true, mode: 'player-api', videoId: command.videoId, fullscreenRetained: retained(fullscreen, adapter) };
     }
     return { ok: false, videoId: command.videoId, fullscreenRetained: retained(fullscreen, adapter), error: 'same-document load was not verified' };
@@ -47,7 +50,7 @@ function installPageBridge(): void {
     const node = document.getElementById(nodeId);
     if (!node) return;
     const player = () => document.getElementById('movie_player') as (HTMLElement & {
-        getVideoData?: () => { video_id?: string };
+        getVideoData?: () => { video_id?: string; title?: string; author?: string };
         loadVideoById?: (options: { videoId: string; startSeconds: number }) => void;
     }) | null;
     const adapter: YouTubePageAdapter = {
@@ -68,6 +71,23 @@ function installPageBridge(): void {
             return true;
         },
         replaceWatchUrl(videoId) { history.replaceState(history.state, '', `/watch?v=${videoId}`); },
+        async syncMetadata(videoId) {
+            // YouTube updates the player before its SPA metadata. Wait briefly,
+            // then repair stale watch-page/title metadata without reloading.
+            let data = player()?.getVideoData?.();
+            for (let attempt = 0; attempt < 20 && (data?.video_id !== videoId || !data?.title); attempt += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+                data = player()?.getVideoData?.();
+            }
+            if (data?.video_id !== videoId || !data.title) return;
+            document.title = `${data.title} - YouTube`;
+            for (const selector of ['h1.ytd-watch-metadata yt-formatted-string', 'h1.title yt-formatted-string']) {
+                const title = document.querySelector(selector);
+                if (title) title.textContent = data.title;
+            }
+            const ogTitle = document.querySelector('meta[property="og:title"]');
+            if (ogTitle) ogTitle.setAttribute('content', data.title);
+        },
         getFullscreenElement: () => document.fullscreenElement,
         wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     };
