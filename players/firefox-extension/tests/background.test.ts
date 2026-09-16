@@ -2,6 +2,54 @@ import { describe, expect, it, vi } from 'vitest';
 import { startBackground } from '../src/background';
 
 describe('background lifecycle', () => {
+    it('fast-forwards to the current server sequence when no durable cursor exists', async () => {
+        const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ command: null, sequence: 12 }), { status: 200 }));
+        const browserApi = {
+            tabs: { get: vi.fn(), create: vi.fn(), update: vi.fn(), sendMessage: vi.fn(), onRemoved: { addListener: vi.fn() } },
+            runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } },
+            storage: {
+                local: {
+                    get: vi.fn().mockResolvedValue({ baseUrl: 'http://127.0.0.1:3010', token: 'token' }),
+                    set: vi.fn(),
+                },
+                onChanged: { addListener: vi.fn() },
+            },
+        } as any;
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = fetcher;
+        try {
+            const background = await startBackground(browserApi);
+            await background.poll();
+            expect(fetcher.mock.calls[0][0]).toContain('/command?after=9007199254740991');
+            expect(browserApi.storage.local.set).toHaveBeenCalledWith({ commandCursor: 12 });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
+    it('restores and advances a durable command cursor across reloads', async () => {
+        const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ command: null, sequence: 9 }), { status: 200 }));
+        const browserApi = {
+            tabs: { get: vi.fn(), create: vi.fn(), update: vi.fn(), sendMessage: vi.fn(), onRemoved: { addListener: vi.fn() } },
+            runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } },
+            storage: {
+                local: {
+                    get: vi.fn().mockResolvedValue({ baseUrl: 'http://127.0.0.1:3010', token: 'token', commandCursor: 7 }),
+                    set: vi.fn(),
+                },
+                onChanged: { addListener: vi.fn() },
+            },
+        } as any;
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = fetcher;
+        try {
+            const background = await startBackground(browserApi);
+            await background.poll();
+            expect(fetcher.mock.calls[0][0]).toContain('/command?after=7');
+            expect(browserApi.storage.local.set).toHaveBeenCalledWith({ commandCursor: 9 });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
     it('starts polling after a token is saved and never creates duplicate timers', async () => {
         const onMessage: Array<(message: unknown) => void> = [];
         const onChanged: Array<(changes: Record<string, { newValue?: unknown }>) => void> = [];
