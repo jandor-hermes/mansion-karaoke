@@ -1,2 +1,13 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
-export default defineConfig({ test: { include: ['players/firefox-extension/tests/**/*.test.ts'], environment: 'node' } });
+
+const extensionRoot = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+    test: {
+        root: extensionRoot,
+        include: ['tests/**/*.test.ts'],
+        environment: 'node',
+    },
+});
