@@ -9,3 +9,4 @@ node_modules
 /dist/
 
 apps/control-plane/dist/
+packaging/macos/release/
