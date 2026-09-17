@@ -37,9 +37,21 @@ User authorized phased fixes, efficient workers, and interruption-safe progress.
 
 ## Integrated checkpoint — guest/controller slices
 
-Integrated worker commits on this branch: `a2f9fad`, `a8cea3d`, `5128624`, `46cd27d`.
+Integrated worker commits on this branch: `a2f9fad`, `a8cea3d`, `5128624`, `46cd27d`, `96e81f9` (native), plus `f19f698` (parent test fix).
 
-Parent reran the complete controller suite using pinned Bun 1.3.13: **8 test files, 62 tests passed**, including standalone server startup. This resolves the guest worker's missing-youtubei worktree environment limitation; it was not waived. Log: `/tmp/party-integrated-controller.log`. Independent Luna review is pending (delegation `deleg_d60d0ac2`). Native worker remains separate (delegation `deleg_2b6dc0d6`). Do not call these integrated slices independently approved until that result is recorded.
+Parent independent review (2026-09-17, this session) — **approve, nits only**, replacing the failed Luna delegation (`deleg_d60d0ac2`, `deleg_acd9e17d`, `deleg_611297e5` all 429):
+
+1. Guest freshness (`a2f9fad`): freshness bucket `f` added to the unchanged-payload render key so identical snapshots still expire; queue/history rerenders split onto their own keys; loading copy distinguishes extension-connected from observed playback. Contract-compliant, with a fake-clock regression covering expiry and heartbeat recovery.
+2. Loading deadline (`a8cea3d`): generation-scoped by commandId, lazily evaluated on request handling (no timer), 30s default via injectable `now`. Polls and `ready` events do not extend it; `playing`/`paused`/`error` clear it. Timeout leaves `state: 'error'` with actionable guidance, keeps `current` and `activeCommand`, never advances the queue or auto-skips; same-generation late `playing` recovers (regression-tested). Nits: a >30s pre-roll ad before the first `playing` will surface as the loading-timeout error (acceptable per the no-auto-skip contract — copy mentions ads); `ready` after a deadline expiry does not clear the error (only a playing/paused event does — harmless).
+3. Listen rejection (`5128624`): `server.once('error')` rejects and clears the server handle; compiled-server top-level `await plane.listen(port)` therefore exits nonzero on EADDRINUSE — verified by unit test plus runtime Node and pinned-Bun-1.3.13 compiled probes.
+4. Scope: diff vs audit baseline touches only control-plane guest/controller files, packaging/macos, and docs. No queue persistence, no scope creep.
+
+Rerun checklist after review:
+- [x] Independent review recorded (this entry).
+- [x] Integrated automated gates pass under pinned Bun 1.3.13: root 701/701, Firefox 61/61, control-plane 62/62, karaoke-dev 5/5, macOS suite 17/17 (after `f19f698` regex fix).
+- [x] Release artifact built and smoke tested: `packaging/macos/release/Mansion Karaoke.app` (arm64 thin launcher+controller, ad-hoc signature deep/strict verified, launcher self-tests pass, packaged controller live `/status` 200 auth / 401 unauth). Handoff ZIP `Mansion-Karaoke-arm64.zip` SHA-256 `e687e237acc4f1ca56995e774ade5395b2a6a2ba3772c18fe751764314c89038`, source commit `f19f698`.
+- [ ] Remote release handoff resolved (old public latest is v0.1.1; new ZIP not yet delivered).
+- [ ] Actual friend Mac / Wi-Fi / Firefox / TV rehearsal — user/device gate, cannot infer from unit tests.
 
 Pinned Bun executable discovered without changing the global install:
 `/Users/hermes/.npm/_npx/b22965130bfded9d/node_modules/bun/bin/bun.exe`.
