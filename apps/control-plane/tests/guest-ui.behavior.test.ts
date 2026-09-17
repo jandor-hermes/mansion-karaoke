@@ -138,6 +138,55 @@ describe('guest UI resilience', () => {
         expect(page.nodes.get('control-status')!.textContent).toMatch(/connected/i);
     });
 
+    it('expires unchanged playback snapshots after ten seconds and recovers on a new heartbeat', async () => {
+        let now = 1_000_000;
+        const realNow = Date.now;
+        Date.now = () => now;
+        try {
+            const status = { current: { itemId: 'now', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'playing', error: null, lastSeen: now, volume: .75 } };
+            const page = boot({
+                stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+                fetch: async () => response(200, status),
+            });
+            await settle();
+            expect(page.nodes.get('control-toggle')!.getAttribute('aria-label')).toBe('Pause playback');
+
+            page.timers[0]!();
+            await settle();
+            now += 10001;
+            page.timers[0]!();
+            await settle();
+            expect(page.nodes.get('control-toggle')!.getAttribute('aria-label')).toBe('Playback state unavailable');
+            expect(page.nodes.get('control-status')!.textContent).toMatch(/disconnected/i);
+
+            status.playback.lastSeen = now;
+            page.timers[0]!();
+            await settle();
+            expect(page.nodes.get('control-toggle')!.getAttribute('aria-label')).toBe('Pause playback');
+        } finally {
+            Date.now = realNow;
+        }
+    });
+
+    it('distinguishes extension connection from loading playback and gives Skip guidance for player errors', async () => {
+        const status = { current: { itemId: 'now', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'loading', error: null, lastSeen: Date.now(), volume: .75 } };
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async () => response(200, status),
+        });
+        await settle();
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/extension connected/i);
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/playback.*not observed|skip/i);
+        expect(page.nodes.get('control-status')!.textContent).not.toBe('Player connected. Controls reflect the TV.');
+
+        status.playback.state = 'error';
+        status.playback.error = 'Video unavailable';
+        page.timers[0]!();
+        await settle();
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/Video unavailable/);
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/Skip/i);
+    });
+
     it('ignores an older full-search response after a newer search completes', async () => {
         const firstSearch = deferred<any>();
         const page = boot({
