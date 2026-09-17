@@ -16,7 +16,7 @@ export type QueueItem = {
     requestedBy?: string;
 };
 export type SuggestionAdapter = { suggest(query: string): Promise<string[]> };
-type Options = { token: string; roomId: string; search?: SearchAdapter; suggest?: SuggestionAdapter; bind?: string };
+type Options = { token: string; roomId: string; search?: SearchAdapter; suggest?: SuggestionAdapter; bind?: string; now?: () => number };
 
 const queueMetadataFields = ['title', 'channel', 'duration', 'thumbnail', 'requestedBy'] as const;
 
@@ -87,6 +87,7 @@ export function createControlPlane(options: Options): ControlPlane {
     let sequence = 0;
     const instanceId = randomUUID();
     let activeCommand: Extract<PlaybackCommand, { type: 'play' }> | null = null;
+    let loadingDeadline: { commandId: string; at: number } | null = null;
     const playback: { state: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'; error: string | null; lastSeen: number | null; volume: number } = { state: 'idle', error: null, lastSeen: null, volume: .75 };
     let desiredPaused = false;
     let lastEventSequence = 0;
@@ -94,6 +95,13 @@ export function createControlPlane(options: Options): ControlPlane {
     let server: Server | undefined;
     let url = '';
     const bind = options.bind ?? resolveBindAddress(process.env);
+    const now = options.now ?? Date.now;
+    const refreshLoadingDeadline = () => {
+        if (loadingDeadline && activeCommand?.commandId === loadingDeadline.commandId && playback.state === 'loading' && now() >= loadingDeadline.at) {
+            playback.state = 'error';
+            playback.error = 'Playback is still loading after 30 seconds. Check Firefox, autoplay permissions, ads, or press Skip.';
+        }
+    };
     const joinUrl = () => {
         const value = new URL(url);
         value.hostname = lanIPv4Addresses()[0] ?? '127.0.0.1';
@@ -104,7 +112,7 @@ export function createControlPlane(options: Options): ControlPlane {
     };
 
     const issue = (command: PlaybackCommand) => {
-        if (command.type === 'play') { lastEventSequence = 0; activeCommand = command; playback.state = 'loading'; playback.error = null; desiredPaused = false; }
+        if (command.type === 'play') { lastEventSequence = 0; activeCommand = command; loadingDeadline = { commandId: command.commandId, at: now() + 30_000 }; playback.state = 'loading'; playback.error = null; desiredPaused = false; }
         if (command.type === 'pause') desiredPaused = true;
         if (command.type === 'resume') desiredPaused = false;
         if (command.type === 'setVolume') playback.volume = command.volume;
@@ -152,6 +160,7 @@ export function createControlPlane(options: Options): ControlPlane {
             return response.end(guestPage(options.roomId));
         }
         if (request.headers.authorization !== `Bearer ${options.token}`) return send(response, 401, { error: 'unauthorized' });
+        refreshLoadingDeadline();
         const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
             if (request.method === 'GET' && urlObject.pathname === '/join-info') return send(response, 200, { joinUrl: joinUrl() });
@@ -186,7 +195,7 @@ export function createControlPlane(options: Options): ControlPlane {
                 }
             }
             if (request.method === 'GET' && urlObject.pathname === '/command') {
-                playback.lastSeen = Date.now();
+                playback.lastSeen = now();
                 const after = Number(urlObject.searchParams.get('after') ?? 0);
                 const next = commands.find((entry) => entry.sequence > after);
                 return send(response, 200, { ...(next ?? { command: null, sequence }), instanceId });
@@ -261,10 +270,10 @@ export function createControlPlane(options: Options): ControlPlane {
                 lastEventSequence = event.sequence;
                 acceptedEvents.add(key);
                 if (acceptedEvents.size > 512) acceptedEvents.delete(acceptedEvents.values().next().value!);
-                playback.lastSeen = Date.now();
+                playback.lastSeen = now();
                 if (event.type !== 'ready') playback.state = event.type;
-                if (event.type === 'error') playback.error = event.message;
-                else if (event.type === 'playing' || event.type === 'paused') playback.error = null;
+                if (event.type === 'error') { playback.error = event.message; loadingDeadline = null; }
+                else if (event.type === 'playing' || event.type === 'paused') { playback.error = null; loadingDeadline = null; }
                 if (event.type === 'ended') { remember(current, 'ended', event.timestamp); current = null; startNext(); }
                 return send(response, 204);
             }

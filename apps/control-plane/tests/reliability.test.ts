@@ -2,8 +2,8 @@ import { afterEach, expect, it } from 'vitest';
 import { createControlPlane, type ControlPlane } from '../src/index.js';
 let plane: ControlPlane;
 afterEach(async () => { await plane?.close(); });
-async function setup() {
- plane = createControlPlane({ token: 't', roomId: 'r' }); await plane.listen(0);
+async function setup(options: { now?: () => number } = {}) {
+ plane = createControlPlane({ token: 't', roomId: 'r', ...options }); await plane.listen(0);
  return async (path: string, body?: unknown) => fetch(plane.url + path, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 it('rejects noncanonical IDs atomically on every insertion route', async () => {
@@ -30,6 +30,46 @@ it('exposes authoritative generation, observed state and conditional skip', asyn
  expect((await req('/control/skip', { expectedItemId: 'one' })).status).toBe(204);
  expect((await req('/control/skip', { expectedItemId: 'one' })).status).toBe(409);
  expect((await (await req('/status')).json()).current.itemId).toBe('two');
+});
+it('marks a stalled loading generation as actionable after 30 seconds without advancing the queue', async () => {
+ const now = { value: 1000 };
+ const req = await setup({ now: () => now.value });
+ await req('/queue', { itemId: 'one', videoId: 'dQw4w9WgXcQ' });
+ now.value += 30_001;
+ const status = await (await req('/status')).json();
+ expect(status.playback).toMatchObject({ state: 'error', error: expect.stringContaining('30 seconds') });
+ expect(status.current.itemId).toBe('one');
+ expect((await req('/command?after=0')).status).toBe(200);
+});
+it('allows a late healthy event from the same generation to recover from loading timeout', async () => {
+ const now = { value: 1000 };
+ const req = await setup({ now: () => now.value });
+ await req('/queue', { itemId: 'one', videoId: 'dQw4w9WgXcQ' });
+ const { command } = await (await req('/command?after=0')).json();
+ now.value += 30_001;
+ await req('/status');
+ expect((await req('/events', { ...command, type: 'playing', sequence: 1, timestamp: now.value })).status).toBe(204);
+ expect((await (await req('/status')).json()).playback).toMatchObject({ state: 'playing', error: null });
+});
+it('keeps manual skip advancing normally after a loading timeout', async () => {
+ const now = { value: 1000 };
+ const req = await setup({ now: () => now.value });
+ await req('/queue', { itemId: 'one', videoId: 'dQw4w9WgXcQ' });
+ await req('/queue', { itemId: 'two', videoId: 'M7lc1UVf-VE' });
+ now.value += 30_001;
+ expect((await req('/control/skip', { expectedItemId: 'one' })).status).toBe(204);
+ expect((await (await req('/status')).json()).current.itemId).toBe('two');
+});
+it('does not extend loading deadline for polls or ready events', async () => {
+ const now = { value: 1000 };
+ const req = await setup({ now: () => now.value });
+ await req('/queue', { itemId: 'one', videoId: 'dQw4w9WgXcQ' });
+ const { command } = await (await req('/command?after=0')).json();
+ now.value += 20_000;
+ await req('/command?after=0');
+ await req('/events', { ...command, type: 'ready', sequence: 1, timestamp: now.value });
+ now.value += 10_001;
+ expect((await (await req('/status')).json()).playback.state).toBe('error');
 });
 it('does not let delayed lifecycle events overwrite newer playback and clears recovered errors', async () => {
  const req = await setup();
