@@ -32,8 +32,8 @@ export class CommandRouter {
         debug('command received', { type: command.type, commandId: command.commandId });
         if (command.type === 'play') {
             const identity = { commandId: command.commandId, itemId: command.itemId, videoId: command.videoId, roomId: command.roomId };
-            Object.assign(state, identity, { status: 'loading' });
-            const presentation = state.presentation ?? false;
+            Object.assign(state, identity, { status: 'loading', presentation: true });
+            const presentation = true;
             const volume = state.volume ?? .75;
             const paused = state.desiredPaused ?? false;
             // Immutable document bootstrap: old documents cannot ask for a new identity.
@@ -48,13 +48,24 @@ export class CommandRouter {
             if (state.tabId === null) {
                 const tab = await this.tabs.create({ url, active: true });
                 state.tabId = tab.id ?? null; state.windowId = tab.windowId ?? null;
+                debug('play navigation created', { commandId: command.commandId, tabId: state.tabId, windowId: state.windowId });
+                if (state.windowId != null && this.windows) {
+                    try { await this.windows.update(state.windowId, { state: 'fullscreen' }); debug('play window presentation applied', { commandId: command.commandId, windowId: state.windowId }); }
+                    catch (error) { console.error('[karaoke-player] Firefox window fullscreen failed', error); }
+                }
                 return;
             }
             try {
                 const result = parseLoadVideoResult(await this.sendLoadVideo(state.tabId, { type: 'loadVideo', ...identity, position: command.position, presentation, volume, paused }));
-                if (result?.ok && result.videoId === command.videoId) return;
+                if (result?.ok && result.videoId === command.videoId) {
+                    debug('play applied in existing document', { commandId: command.commandId, videoId: result.videoId, mode: result.mode });
+                    if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: 'fullscreen' });
+                    return;
+                }
             } catch (error) { debug('same-document load failed; using full navigation', { error }); }
             await this.tabs.update(state.tabId, { url, active: true });
+            debug('play full navigation applied', { commandId: command.commandId, tabId: state.tabId });
+            if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: 'fullscreen' });
             return;
         }
         if (command.type === 'skip') {

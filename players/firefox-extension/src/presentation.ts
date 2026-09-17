@@ -160,16 +160,21 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
  * renders inside the expanded player.
  */
 export function logPresentationDiagnostics(documentLike: {
-    querySelector(selector: string): { getBoundingClientRect(): { width: number; height: number; top: number; left: number }; offsetWidth?: number; videoWidth?: number; videoHeight?: number } | null;
+    querySelector(selector: string): { getBoundingClientRect?(): { width: number; height: number; top: number; left: number }; offsetWidth?: number; videoWidth?: number; videoHeight?: number } | null;
 }, logger: DiagnosticLogger = defaultLogger): void {
     const player = documentLike.querySelector(YOUTUBE_PLAYER_SELECTOR);
     const video = documentLike.querySelector(YOUTUBE_VIDEO_SELECTOR);
+    const playerRect = player?.getBoundingClientRect?.();
+    const videoRect = video?.getBoundingClientRect?.();
+    const viewportFilled = Boolean(playerRect && playerRect.width >= globalThis.innerWidth * .9 && playerRect.height >= globalThis.innerHeight * .9);
     logger('presentation diagnostics', {
-        player: player
-            ? { selector: YOUTUBE_PLAYER_SELECTOR, rect: player.getBoundingClientRect() }
+        viewport: { width: globalThis.innerWidth, height: globalThis.innerHeight },
+        viewportFilled,
+        player: playerRect
+            ? { selector: YOUTUBE_PLAYER_SELECTOR, rect: playerRect }
             : { selector: YOUTUBE_PLAYER_SELECTOR, found: false },
-        video: video
-            ? { selector: YOUTUBE_VIDEO_SELECTOR, rect: video.getBoundingClientRect(), intrinsic: { videoWidth: video.videoWidth, videoHeight: video.videoHeight } }
+        video: videoRect
+            ? { selector: YOUTUBE_VIDEO_SELECTOR, rect: videoRect, intrinsic: { videoWidth: video?.videoWidth, videoHeight: video?.videoHeight } }
             : { selector: YOUTUBE_VIDEO_SELECTOR, found: false },
     });
 }

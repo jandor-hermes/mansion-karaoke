@@ -24,7 +24,7 @@ describe('Firefox command router', () => {
         expect(tabs.create).toHaveBeenCalledTimes(1);
         expect(sendMessage).toHaveBeenCalledWith(41, {
             type: 'loadVideo', commandId: 'c2', roomId: 'r1', itemId: 'i2', videoId: videoB, position: 7,
-            presentation: false, volume: .75, paused: false,
+            presentation: true, volume: .75, paused: false,
         });
         expect(tabs.update).not.toHaveBeenCalled();
         expect(state.tabId).toBe(41);
@@ -39,7 +39,7 @@ describe('Firefox command router', () => {
 
         const url = (tabs.update as ReturnType<typeof vi.fn>).mock.calls[0][1].url;
         expect(new URL(url).searchParams.get('v')).toBe(videoB);
-        expect(bootstrap(url)).toMatchObject({ commandId: 'c2', roomId: 'r1', itemId: 'i2', videoId: videoB, position: 7, presentation: false, volume: .75, paused: false });
+        expect(bootstrap(url)).toMatchObject({ commandId: 'c2', roomId: 'r1', itemId: 'i2', videoId: videoB, position: 7, presentation: true, volume: .75, paused: false });
         expect(tabs.create).not.toHaveBeenCalled();
     });
 
@@ -78,6 +78,19 @@ describe('Firefox command router', () => {
         const router = new CommandRouter(tabs, sendMessage, windows);
         await router.route({ type: 'fullscreen', commandId: 'c3', roomId: 'r1', issuedAt: 3 }, { ...createInitialPlayerState(), tabId: 9, windowId: 77 });
         expect(sendMessage).toHaveBeenCalledWith(9, { type: 'fullscreen' });
+        expect(windows.update).toHaveBeenCalledWith(77, { state: 'fullscreen' });
+    });
+
+    it('automatically fullscreens the Firefox window for every play command', async () => {
+        const tabs: BrowserTabs = { get: vi.fn(), create: vi.fn().mockResolvedValue({ id: 9, windowId: 77 }), update: vi.fn() };
+        const windows = { update: vi.fn().mockResolvedValue({ id: 77, state: 'fullscreen' }) };
+        const router = new CommandRouter(tabs, vi.fn(), windows);
+        const state = createInitialPlayerState();
+
+        await router.route({ type: 'play', commandId: 'c1', roomId: 'r1', issuedAt: 1, itemId: 'i1', videoId: videoB, position: 0 }, state);
+
+        expect(state.presentation).toBe(true);
+        expect(bootstrap((tabs.create as ReturnType<typeof vi.fn>).mock.calls[0][0].url)).toMatchObject({ presentation: true });
         expect(windows.update).toHaveBeenCalledWith(77, { state: 'fullscreen' });
     });
 

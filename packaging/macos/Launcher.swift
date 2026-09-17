@@ -137,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var partyToken = ""
     private var applicationSupportURL: URL!
     private var installedExtensionURL: URL!
+    private var easyManifestURL: URL!
     private let loopbackURL = URL(string: "http://127.0.0.1:\(controllerPort)/")!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -144,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try prepareApplicationSupport()
             partyToken = try loadOrCreateToken(in: applicationSupportURL)
             try installExtensionCopy()
+            easyManifestURL = prepareEasyManifestLocation()
             buildMenu()
             buildWindow()
             guard controllerPortIsAvailable() else {
@@ -200,6 +202,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try FileManager.default.removeItem(at: installedExtensionURL)
         }
         try FileManager.default.copyItem(at: source, to: installedExtensionURL)
+    }
+
+    private func prepareEasyManifestLocation() -> URL {
+        let fallback = installedExtensionURL.appendingPathComponent("manifest.json")
+        guard let desktop = try? FileManager.default.url(
+            for: .desktopDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ), FileManager.default.isWritableFile(atPath: desktop.path) else { return fallback }
+
+        let easyDirectory = desktop.appendingPathComponent("Mansion Karaoke Extension", isDirectory: true)
+        do {
+            if FileManager.default.fileExists(atPath: easyDirectory.path) {
+                let values = try easyDirectory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                guard values.isDirectory == true, values.isSymbolicLink != true else { return fallback }
+            } else {
+                try FileManager.default.createDirectory(at: easyDirectory, withIntermediateDirectories: false)
+            }
+            for item in try FileManager.default.contentsOfDirectory(at: installedExtensionURL, includingPropertiesForKeys: nil) {
+                let link = easyDirectory.appendingPathComponent(item.lastPathComponent)
+                if FileManager.default.fileExists(atPath: link.path) {
+                    let values = try link.resourceValues(forKeys: [.isSymbolicLinkKey])
+                    guard values.isSymbolicLink == true else { return fallback }
+                    try FileManager.default.removeItem(at: link)
+                }
+                try FileManager.default.createSymbolicLink(
+                    at: link,
+                    withDestinationURL: item
+                )
+            }
+            return easyDirectory.appendingPathComponent("manifest.json")
+        } catch {
+            return fallback
+        }
     }
 
     private func startController() throws {
@@ -319,7 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         content.addSubview(button("Reveal Extension", action: #selector(revealExtension), frame: NSRect(x: 474, y: 230, width: 138, height: 34)))
 
         let instructions = label(
-            "Firefox setup\n1. Click Reveal Extension.\n2. Click Firefox Setup, then Load Temporary Add-on.\n3. Select the revealed manifest.json file.\n4. Open the Mansion Karaoke toolbar button and enter the URL and token above.\n5. Click Save & start. Guests can then scan the QR code on the TV.",
+            "Firefox setup\n1. Click Firefox Setup, then Load Temporary Add-on.\n2. Choose Desktop → Mansion Karaoke Extension → manifest.json.\n3. If it is not there, use Reveal Extension or Copy Manifest Path below.\n4. Open the Mansion Karaoke toolbar button and enter the URL and token above.\n5. Click Save & start. Guests can then scan the QR code on the TV.",
             frame: NSRect(x: 28, y: 70, width: 584, height: 135),
             size: 13,
             bold: false
@@ -327,9 +364,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         instructions.maximumNumberOfLines = 7
         content.addSubview(instructions)
 
-        extensionPathField = selectableField(installedExtensionURL.appendingPathComponent("manifest.json").path, frame: NSRect(x: 28, y: 28, width: 584, height: 28))
+        extensionPathField = selectableField(easyManifestURL.path, frame: NSRect(x: 28, y: 28, width: 390, height: 28))
         extensionPathField.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         content.addSubview(extensionPathField)
+        content.addSubview(button("Copy Manifest Path", action: #selector(copyManifestPath), frame: NSRect(x: 428, y: 27, width: 184, height: 30)))
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -371,8 +409,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func revealExtension() {
-        let manifest = installedExtensionURL.appendingPathComponent("manifest.json")
-        NSWorkspace.shared.activateFileViewerSelecting([manifest])
+        NSWorkspace.shared.activateFileViewerSelecting([easyManifestURL])
+    }
+
+    @objc private func copyManifestPath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(easyManifestURL.path, forType: .string)
     }
 
     @objc private func openFirefoxSetup() {

@@ -1827,9 +1827,14 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
   function logPresentationDiagnostics(documentLike, logger = defaultLogger) {
     const player = documentLike.querySelector(YOUTUBE_PLAYER_SELECTOR);
     const video2 = documentLike.querySelector(YOUTUBE_VIDEO_SELECTOR);
+    const playerRect = player?.getBoundingClientRect?.();
+    const videoRect = video2?.getBoundingClientRect?.();
+    const viewportFilled = Boolean(playerRect && playerRect.width >= globalThis.innerWidth * 0.9 && playerRect.height >= globalThis.innerHeight * 0.9);
     logger("presentation diagnostics", {
-      player: player ? { selector: YOUTUBE_PLAYER_SELECTOR, rect: player.getBoundingClientRect() } : { selector: YOUTUBE_PLAYER_SELECTOR, found: false },
-      video: video2 ? { selector: YOUTUBE_VIDEO_SELECTOR, rect: video2.getBoundingClientRect(), intrinsic: { videoWidth: video2.videoWidth, videoHeight: video2.videoHeight } } : { selector: YOUTUBE_VIDEO_SELECTOR, found: false }
+      viewport: { width: globalThis.innerWidth, height: globalThis.innerHeight },
+      viewportFilled,
+      player: playerRect ? { selector: YOUTUBE_PLAYER_SELECTOR, rect: playerRect } : { selector: YOUTUBE_PLAYER_SELECTOR, found: false },
+      video: videoRect ? { selector: YOUTUBE_VIDEO_SELECTOR, rect: videoRect, intrinsic: { videoWidth: video2?.videoWidth, videoHeight: video2?.videoHeight } } : { selector: YOUTUBE_VIDEO_SELECTOR, found: false }
     });
   }
 
@@ -6057,7 +6062,12 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
       history.replaceState(history.state, "", `/watch?v=${session.videoId}#karaoke=${encodeURIComponent(JSON.stringify(session))}`);
     };
     let armed = false, retired = false, joinUrl = "", loading = false;
+    let playAttempts = 0, playInFlight = false;
+    let loadGeneration = 0;
+    let playRetry;
+    const MAX_PLAY_ATTEMPTS = 4;
     const adShowing = () => !!document.querySelector(".ad-showing, .ad-interrupting");
+    const debug = (message, details) => console.debug(`[karaoke-player] ${message}`, details);
     const matching = () => session !== null && new URL(location.href).searchParams.get("v") === session.videoId;
     const report = (type, element, extra = {}) => {
       if (!session || loading || element !== video() || !matching() || adShowing()) return;
@@ -6072,20 +6082,58 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     const present = () => {
       activateTheaterMode(document);
       applyPresentation(document);
+      queueMicrotask(() => logPresentationDiagnostics(document));
     };
-    const play = async (element) => {
+    const schedulePlay = (element, reason, delay = 0) => {
+      if (!session || session.paused || retired || loading || playInFlight || playAttempts >= MAX_PLAY_ATTEMPTS) return;
+      if (playRetry !== void 0) clearTimeout(playRetry);
+      if (delay === 0) {
+        void play(element, reason);
+        return;
+      }
+      playRetry = setTimeout(() => {
+        playRetry = void 0;
+        void play(element, reason);
+      }, delay);
+    };
+    const play = async (element, reason = "prepare") => {
+      if (!session || session.paused || retired || loading || element !== video() || playInFlight || playAttempts >= MAX_PLAY_ATTEMPTS) return;
+      playInFlight = true;
+      const active = session;
+      const attempt = ++playAttempts;
+      debug("content play attempt", { commandId: active.commandId, videoId: active.videoId, attempt, reason, readyState: element.readyState });
+      let retry = null;
       try {
         await element.play();
+        if (session !== active || element !== video()) return;
+        debug("content play resolved", { commandId: active.commandId, videoId: active.videoId, attempt, paused: element.paused });
       } catch (error) {
-        if (error?.name !== "AbortError") report("error", element, { code: "AUTOPLAY", message: "Allow autoplay with sound for YouTube in Firefox, then Resume or Skip." });
+        const name = error?.name ?? "Error";
+        debug("content play rejected", { commandId: active.commandId, videoId: active.videoId, attempt, reason, name, message: error?.message });
+        if (session === active && attempt < MAX_PLAY_ATTEMPTS) retry = { reason: `retry-after-${name}`, delay: 150 * attempt };
+        else if (session === active) report("error", element, { code: "AUTOPLAY", message: "Playback did not start after 4 attempts. Allow autoplay with sound for YouTube in Firefox, then Resume or Skip." });
+      } finally {
+        playInFlight = false;
+      }
+      if (retry) schedulePlay(element, retry.reason, retry.delay);
+    };
+    const installTvJoinQr = () => {
+      if (!joinUrl) return;
+      const host = installJoinQr(document, joinUrl);
+      if (!host || host.dataset.karaokeRelabeled === "true") return;
+      const labels = Array.from(host.children).filter((child) => child.tagName === "DIV");
+      const label = labels.at(-1);
+      if (label) {
+        label.textContent = "Mansion Karaoke";
+        host.dataset.karaokeRelabeled = "true";
       }
     };
     const attach = () => {
-      if (joinUrl) installJoinQr(document, joinUrl);
+      installTvJoinQr();
       const element = video();
       if (!element || element.dataset.karaokeBound) return;
       element.dataset.karaokeBound = "true";
-      for (const event of ["loadedmetadata", "playing", "pause", "ended", "error"]) {
+      for (const event of ["loadedmetadata", "canplay", "playing", "pause", "ended", "error"]) {
         element.addEventListener(event, () => {
           if (retired && event === "playing") {
             element.pause();
@@ -6095,7 +6143,9 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
             element.pause();
             return;
           }
-          report(event === "loadedmetadata" ? "ready" : event, element);
+          if (event === "playing") playAttempts = 0;
+          if ((event === "loadedmetadata" || event === "canplay") && session && !session.paused) schedulePlay(element, event);
+          if (event !== "canplay") report(event === "loadedmetadata" ? "ready" : event, element);
         });
       }
       element.addEventListener("timeupdate", () => {
@@ -6106,22 +6156,31 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
       });
       const prepare = () => {
         if (!session || loading || retired) return;
+        debug("content load ready", { commandId: session.commandId, videoId: session.videoId, readyState: element.readyState });
         element.volume = session.volume ?? 0.75;
         if (session.presentation) present();
         if (session.position > 0 && !adShowing()) element.currentTime = session.position;
         if (session.paused) element.pause();
-        else void play(element);
+        else schedulePlay(element, "prepare");
       };
       element.addEventListener("loadedmetadata", prepare);
       if (element.readyState >= 1) prepare();
     };
-    const observer = new MutationObserver(attach);
+    const observer = new MutationObserver(() => {
+      attach();
+      if (session?.presentation) {
+        const root = document.documentElement;
+        const hasClass = root.classList.contains?.("karaoke-video-presentation") ?? false;
+        const hasStyle = Boolean(document.getElementById("karaoke-video-presentation-style"));
+        if (!hasClass || !hasStyle) present();
+      }
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
     attach();
     void browser.runtime.sendMessage({ type: "getJoinInfo" }).then((value) => {
       if (value && typeof value === "object" && typeof value.joinUrl === "string") {
         joinUrl = value.joinUrl;
-        installJoinQr(document, joinUrl);
+        installTvJoinQr();
       }
     }).catch((error) => console.error("[karaoke-player] join QR unavailable", error));
     const channel = Math.random().toString(36).slice(2);
@@ -6138,6 +6197,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     browser.runtime.onMessage.addListener(async (raw) => {
       const message = raw;
       if (!message || typeof message !== "object") return;
+      debug("content command received", { type: message.type, commandId: message.commandId, videoId: message.videoId });
       const element = video();
       if (message.type === "inspectPlayback") return session && element && !adShowing() ? { ...session, type: element.ended ? "ended" : element.paused ? "paused" : "playing", position: element.currentTime } : null;
       if (message.type === "skip") {
@@ -6151,12 +6211,20 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
       if (load) {
         const next = sessionFrom(message);
         if (!next) throw new Error("Missing playback identity");
+        const generation = ++loadGeneration;
         session = null;
         armed = false;
         loading = true;
         retired = false;
+        playAttempts = 0;
+        if (playRetry !== void 0) {
+          clearTimeout(playRetry);
+          playRetry = void 0;
+        }
         try {
           const result = await requestPageLoad(bridgeNode, channel, load);
+          debug("content load resolved", { commandId: next.commandId, videoId: next.videoId, ok: result.ok, mode: result.mode, error: result.error });
+          if (generation !== loadGeneration) return result;
           if (result.ok) {
             session = next;
             loading = false;
@@ -6167,12 +6235,15 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
               current.volume = next.volume ?? 0.75;
               if (next.paused) current.pause();
               else {
-                await play(current);
+                await play(current, "same-document-load");
                 if (!current.paused) report("playing", current);
               }
             }
           }
           return result;
+        } catch (error) {
+          debug("content load rejected", { commandId: next.commandId, videoId: next.videoId, error });
+          throw error;
         } finally {
           loading = false;
         }

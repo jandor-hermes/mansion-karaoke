@@ -31,10 +31,12 @@ test('README accurately describes the private-beta signature', () => {
   assert.doesNotMatch(readme, /app is unsigned/);
 });
 
-test('friend setup reveals the extension before opening the file picker', () => {
-  const reveal = friendSetup.indexOf('Select **Reveal Extension**');
+test('friend setup prefers the easy manifest path and documents a fallback', () => {
+  const easyPath = friendSetup.indexOf('Desktop/Mansion Karaoke Extension/manifest.json');
   const picker = friendSetup.indexOf('Select **Load Temporary Add-on…**');
-  assert.ok(reveal >= 0 && picker >= 0 && reveal < picker);
+  const fallback = friendSetup.indexOf('select **Reveal Extension** or **Copy Manifest Path**');
+  assert.ok(picker >= 0 && easyPath > picker);
+  assert.ok(fallback > picker);
 });
 
 test('Firefox setup sends the raw internal page through the Firefox executable', () => {
@@ -47,4 +49,14 @@ test('port conflicts have actionable launcher copy', () => {
   assert.ok(launcher.includes('Port \\(controllerPort) is already in use'));
   assert.match(launcher, /Quit the other controller/);
   assert.match(launcher, /controllerFailureMessage\(from:/);
+});
+
+test('launcher exposes a stable user-owned manifest path with copy-path fallback', () => {
+  assert.match(launcher, /Desktop.*Mansion Karaoke Extension/s);
+  assert.match(launcher, /createSymbolicLink/);
+  assert.match(launcher, /isSymbolicLink/);
+  assert.match(launcher, /withIntermediateDirectories: false/);
+  assert.match(launcher, /Copy Manifest Path/);
+  assert.match(launcher, /#selector\(copyManifestPath\)/);
+  assert.doesNotMatch(launcher, /Bundle\.main\.bundleURL.*write|write.*Bundle\.main\.bundleURL/s);
 });
