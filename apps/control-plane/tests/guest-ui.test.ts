@@ -96,7 +96,8 @@ describe('guest UI page', () => {
         expect(html).toContain('quick-add');
         expect(html).toContain('load-more');
         expect(html).toContain("$('results').textContent='';visibleResults=0;renderMore()");
-        expect(html).toContain("clearTimeout(suggestTimer);suggestSequence++;$('search-suggestions').textContent='';");
+        expect(html).toContain('const generation=++searchSequence');
+        expect(html).toContain('Search timed out — keeping prior results.');
         expect(html).toContain('toast');
         expect(html).toContain('aria-live="polite"');
         expect(html).toContain('aria-label="Pause playback"');

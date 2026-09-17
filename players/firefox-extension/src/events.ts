@@ -2,6 +2,7 @@ import { playbackEventSchema, type PlaybackEvent } from '../../../packages/playb
 
 export type ContentEvent = {
     type: string;
+    commandId?: string; roomId?: string; itemId?: string; videoId?: string;
     position?: number;
     code?: string;
     message?: string;
@@ -37,19 +38,22 @@ export function mapDomEvent(event: ContentEvent): MappedContentEvent | null {
 
 export function enrichContentEvent(
     input: ContentEvent,
-    active: { roomId?: string; itemId?: string; videoId?: string },
+    active: { commandId?: string; roomId?: string; itemId?: string; videoId?: string },
     previousSequence: number,
     timestamp: number,
 ): PlaybackEvent | null {
     const mapped = mapDomEvent(input);
-    if (!mapped || !active.roomId || !active.itemId || !active.videoId) return null;
+    if (!mapped || !active.commandId || !active.roomId || !active.itemId || !active.videoId) return null;
+    if (input.commandId !== active.commandId || input.roomId !== active.roomId || input.itemId !== active.itemId || input.videoId !== active.videoId) return null;
     const event = {
         ...mapped,
+        commandId: active.commandId,
         roomId: active.roomId,
         itemId: active.itemId,
         videoId: active.videoId,
         sequence: Math.max(1, previousSequence + 1),
         timestamp,
     };
-    return playbackEventSchema.parse(event);
+    const parsed = playbackEventSchema.safeParse(event);
+    return parsed.success ? parsed.data : null;
 }

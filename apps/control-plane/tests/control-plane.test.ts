@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createControlPlane, type ControlPlane } from '../src/index.js';
 
-const item = (videoId: string, itemId = `item-${videoId}`) => ({ videoId, itemId });
+const videoIds: Record<string, string> = {
+    first: 'dQw4w9WgXcQ', second: 'M7lc1UVf-VE', third: '9bZkp7q19f0', fourth: 'kJQP7kiw5Fk',
+    next: '3JZ_D3ELwOQ', now: 'ScMzIvxBSi4',
+};
+const canonicalVideoId = (value: string) => videoIds[value] ?? value;
+const item = (videoId: string, itemId = `item-${videoId}`) => ({ videoId: canonicalVideoId(videoId), itemId });
 
 let planes: ControlPlane[] = [];
 afterEach(async () => { await Promise.all(planes.splice(0).map((plane) => plane.close())); });
@@ -59,7 +64,7 @@ describe('local control-plane vertical slice', () => {
         const poll = await request(plane, '/command?after=0');
         const firstPoll = await json(poll);
         expect(firstPoll.command.type).toBe('play');
-        expect(firstPoll.command.videoId).toBe('first');
+        expect(firstPoll.command.videoId).toBe(videoIds.first);
         expect(firstPoll.sequence).toBe(1);
 
         const duplicate = await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
@@ -107,10 +112,10 @@ describe('local control-plane vertical slice', () => {
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('first')) });
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('second')) });
         const play = await json(await request(plane, '/command?after=0'));
-        const ended = await request(plane, '/events', { method: 'POST', body: JSON.stringify({ type: 'ended', roomId: 'room-1', sequence: 1, timestamp: 2, itemId: 'item-first', videoId: 'first' }) });
+        const ended = await request(plane, '/events', { method: 'POST', body: JSON.stringify({ type: 'ended', commandId: play.command.commandId, roomId: 'room-1', sequence: 1, timestamp: 2, itemId: 'item-first', videoId: videoIds.first }) });
         expect(ended.status).toBe(204);
         const next = await json(await request(plane, `/command?after=${play.sequence}`));
-        expect(next.command.videoId).toBe('second');
+        expect(next.command.videoId).toBe(videoIds.second);
         await request(plane, '/control/skip', { method: 'POST' });
         const skipped = await json(await request(plane, `/command?after=${next.sequence}`));
         expect(skipped.command.type).toBe('skip');
@@ -137,7 +142,7 @@ describe('local control-plane vertical slice', () => {
         const replay = await json(await request(plane, `/command?after=${first.sequence}`));
         expect(replay.command).toBeNull();
         const status = await json(await request(plane, '/status'));
-        expect(status.current.videoId).toBe('first');
+        expect(status.current.videoId).toBe(videoIds.first);
         expect(status.queue).toEqual([]);
     });
 });
@@ -223,7 +228,8 @@ describe('queue history and direct selection', () => {
         const second = { ...item('second'), title: 'Second Song' };
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(first) });
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(second) });
-        await request(plane, '/events', { method: 'POST', body: JSON.stringify({ type: 'ended', roomId: 'room-1', sequence: 1, timestamp: 2, itemId: first.itemId, videoId: first.videoId }) });
+        const active = await json(await request(plane, '/command?after=0'));
+        await request(plane, '/events', { method: 'POST', body: JSON.stringify({ type: 'ended', commandId: active.command.commandId, roomId: 'room-1', sequence: 1, timestamp: 2, itemId: first.itemId, videoId: first.videoId }) });
         await request(plane, '/control/skip', { method: 'POST' });
 
         const status = await json(await request(plane, '/status'));
@@ -249,7 +255,7 @@ describe('queue history and direct selection', () => {
         const interrupt = await json(await request(plane, '/command?after=1'));
         expect(interrupt.command.type).toBe('skip');
         const play = await json(await request(plane, `/command?after=${interrupt.sequence}`));
-        expect(play.command).toMatchObject({ type: 'play', itemId: 'item-third', videoId: 'third' });
+        expect(play.command).toMatchObject({ type: 'play', itemId: 'item-third', videoId: videoIds.third });
     });
 
     it('rejects direct play for an unknown or currently playing item', async () => {
@@ -293,7 +299,7 @@ describe('queue removal and reordering', () => {
         expect(removal.status).toBe(200);
         const body = await json(removal);
         expect(body.queue).toEqual([item('third')]);
-        expect((await json(await request(plane, '/status'))).current.videoId).toBe('first');
+        expect((await json(await request(plane, '/status'))).current.videoId).toBe(videoIds.first);
         expect((await json(await request(plane, '/status'))).queue).toEqual([item('third')]);
     });
 
@@ -315,7 +321,7 @@ describe('queue removal and reordering', () => {
         expect([400, 409]).toContain(removal.status);
         const after = await json(await request(plane, '/status'));
         expect(after.current).toEqual(before.current);
-        expect(after.current.videoId).toBe('first');
+        expect(after.current.videoId).toBe(videoIds.first);
     });
 
     it('requires auth for the removal endpoint', async () => {
@@ -348,7 +354,7 @@ describe('queue removal and reordering', () => {
         await request(plane, '/queue', { method: 'POST', body: JSON.stringify(item('second')) });
         const currentMove = await request(plane, '/queue/move', { method: 'POST', body: JSON.stringify({ itemId: 'item-first', position: 0 }) });
         expect(currentMove.status).toBe(400);
-        expect((await json(await request(plane, '/status'))).current.videoId).toBe('first');
+        expect((await json(await request(plane, '/status'))).current.videoId).toBe(videoIds.first);
         const missingMove = await request(plane, '/queue/move', { method: 'POST', body: JSON.stringify({ itemId: 'missing', position: 0 }) });
         expect(missingMove.status).toBe(400);
     });

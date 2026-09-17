@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-const nonEmptyString = z.string().trim().min(1);
+const nonEmptyString = z.string().min(1).refine((value) => value === value.trim(), 'must be canonical');
+export const itemIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+export const videoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 const timestamp = z.number().finite().int().nonnegative();
 const sequence = z.number().int().positive();
 
@@ -13,8 +15,8 @@ const commandBase = z.object({
 export const playbackCommandSchema = z.discriminatedUnion('type', [
     commandBase.extend({
         type: z.literal('play'),
-        itemId: nonEmptyString,
-        videoId: nonEmptyString,
+        itemId: itemIdSchema,
+        videoId: videoIdSchema,
         position: z.number().finite().nonnegative().default(0),
     }),
     commandBase.extend({ type: z.literal('pause') }),
@@ -28,14 +30,15 @@ export const playbackCommandSchema = z.discriminatedUnion('type', [
 ]);
 
 const eventBase = z.object({
+    commandId: nonEmptyString,
     roomId: nonEmptyString,
     sequence,
     timestamp,
 });
 
 const itemEvent = eventBase.extend({
-    itemId: nonEmptyString,
-    videoId: nonEmptyString,
+    itemId: itemIdSchema,
+    videoId: videoIdSchema,
     position: z.number().finite().nonnegative().optional(),
 });
 
@@ -49,8 +52,8 @@ export const playbackEventSchema = z.discriminatedUnion('type', [
         type: z.literal('error'),
         code: nonEmptyString,
         message: nonEmptyString,
-        itemId: nonEmptyString.optional(),
-        videoId: nonEmptyString.optional(),
+        itemId: itemIdSchema,
+        videoId: videoIdSchema,
     }),
 ]);
 

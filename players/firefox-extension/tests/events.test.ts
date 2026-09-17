@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { enrichContentEvent, mapDomEvent } from '../src/events';
 
+const active = { commandId: 'generation-1', roomId: 'room-1', itemId: 'item-1', videoId: 'dQw4w9WgXcQ' };
+
 describe('content event routing', () => {
     it('maps DOM playback names to protocol event names', () => {
         expect(mapDomEvent({ type: 'loadedmetadata', position: 2 })).toEqual({ type: 'ready', position: 2 });
@@ -16,15 +18,16 @@ describe('content event routing', () => {
     });
 
     it('enriches a mapped event with active playback identity and monotonic metadata', () => {
-        expect(enrichContentEvent(
-            { type: 'playing', position: 12 },
-            { roomId: 'room-1', itemId: 'item-1', videoId: 'video-1' },
-            7,
-            1700000000000,
-        )).toEqual({ type: 'playing', roomId: 'room-1', itemId: 'item-1', videoId: 'video-1', position: 12, sequence: 8, timestamp: 1700000000000 });
+        expect(enrichContentEvent({ type: 'playing', ...active, position: 12 }, active, 7, 1700000000000)).toEqual({
+            type: 'playing', ...active, position: 12, sequence: 8, timestamp: 1700000000000,
+        });
     });
 
-    it('does not enrich an event without an active room and item', () => {
-        expect(enrichContentEvent({ type: 'playing', position: 1 }, { roomId: 'room-1' }, 0, 1)).toBeNull();
+    it('does not enrich an event without an active command, room, and item', () => {
+        expect(enrichContentEvent({ type: 'playing', position: 1 }, { roomId: 'room-1', commandId: 'generation-1' }, 0, 1)).toBeNull();
+    });
+
+    it('drops an event from a different playback generation', () => {
+        expect(enrichContentEvent({ type: 'ended', ...active, commandId: 'generation-0' }, active, 0, 1)).toBeNull();
     });
 });

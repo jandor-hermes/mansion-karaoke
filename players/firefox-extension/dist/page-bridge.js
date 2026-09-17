@@ -35,7 +35,7 @@
     const command = parseLoadVideoCommand(raw);
     if (!command) return { ok: false, videoId: "", fullscreenRetained: false, error: "invalid command" };
     const fullscreen = adapter.getFullscreenElement();
-    const routeDispatched = adapter.dispatchNavigate(command.videoId, command.position);
+    const routeDispatched = adapter.getVideoId() !== command.videoId && adapter.dispatchNavigate(command.videoId, command.position);
     if (routeDispatched && await waitFor(adapter, () => {
       try {
         return new URL(adapter.getHref()).searchParams.get("v") === command.videoId && adapter.getVideoId() === command.videoId;

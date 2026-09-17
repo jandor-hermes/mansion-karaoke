@@ -1,0 +1,285 @@
+import { describe, expect, it } from 'vitest';
+import { guestPage } from '../src/guest-ui.js';
+
+type Listener = (event: any) => any;
+
+class FakeNode {
+    id = '';
+    value = '';
+    private _textContent = '';
+    private _innerHTML = '';
+    get textContent() { return this._textContent; }
+    set textContent(value: string) { this._textContent = String(value); this.children = []; }
+    get innerHTML() { return this._innerHTML; }
+    set innerHTML(value: string) { this._innerHTML = String(value); this.children = []; }
+    hidden = false;
+    disabled = false;
+    className = '';
+    tagName = '';
+    dataset: Record<string, string> = {};
+    children: FakeNode[] = [];
+    parent: FakeNode | null = null;
+    attributes = new Map<string, string>();
+    listeners = new Map<string, Listener[]>();
+    classList = {
+        values: new Set<string>(),
+        toggle: (name: string, force?: boolean) => {
+            const enabled = force === undefined ? !this.classList.values.has(name) : force;
+            if (enabled) this.classList.values.add(name); else this.classList.values.delete(name);
+            return enabled;
+        },
+        add: (...names: string[]) => names.forEach((name) => this.classList.values.add(name)),
+        contains: (name: string) => this.classList.values.has(name),
+    };
+
+    addEventListener(type: string, listener: Listener) {
+        const listeners = this.listeners.get(type) || [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+    }
+
+    dispatch(type: string, extra: Record<string, unknown> = {}) {
+        for (const listener of this.listeners.get(type) || []) listener({
+            preventDefault() {}, target: this, currentTarget: this, ...extra,
+        });
+    }
+
+    append(...nodes: FakeNode[]) { nodes.forEach((node) => this.appendChild(node)); }
+    appendChild(node: FakeNode) { node.parent = this; this.children.push(node); return node; }
+    setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+    getAttribute(name: string) { return this.attributes.get(name) || null; }
+    showModal() { this.hidden = false; }
+    close() { this.hidden = true; }
+    focus() {}
+    requestSubmit() { this.dispatch('submit'); }
+    closest(selector: string): FakeNode | null {
+        if (selector === 'button' && this.tagName === 'button') return this;
+        if (selector.startsWith('.') && this.className.split(/\s+/).includes(selector.slice(1))) return this;
+        return this.parent?.closest(selector) || null;
+    }
+    querySelectorAll(selector: string): FakeNode[] {
+        const wantedClass = selector.startsWith('.') ? selector.slice(1) : null;
+        const wantedTag = selector === 'button' ? 'button' : null;
+        return this.children.flatMap((child) => [
+            ...((wantedClass && child.className.split(/\s+/).includes(wantedClass)) || (wantedTag && child.tagName === wantedTag) ? [child] : []),
+            ...child.querySelectorAll(selector),
+        ]);
+    }
+    querySelector(selector: string): FakeNode | null { return this.querySelectorAll(selector)[0] || null; }
+}
+
+function response(status: number, body: unknown = {}) {
+    return { status, ok: status >= 200 && status < 300, json: async () => body };
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; });
+    return { promise, resolve, reject };
+}
+
+async function settle() { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); }
+
+function boot(options: { stored?: Record<string, string>, fetch: (path: string, init?: RequestInit) => Promise<any> }) {
+    const nodes = new Map<string, FakeNode>();
+    const ids = [...guestPage('party-room').matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+    for (const id of ids) {
+        const node = new FakeNode();
+        node.id = id;
+        if (id.includes('button') || id.startsWith('action-') || id.startsWith('control-') || id.startsWith('volume-') || id.startsWith('nav-') || id === 'token-save' || id === 'change-token' || id === 'load-more' || id === 'clear-queue') node.className = 'button';
+        nodes.set(id, node);
+    }
+    const storage = new Map(Object.entries(options.stored || {}));
+    const timers: Array<() => void> = [];
+    const document = {
+        getElementById: (id: string) => nodes.get(id) || null,
+        querySelectorAll: (_selector: string) => [],
+        addEventListener: () => {},
+        createElement: (tag: string) => { const node = new FakeNode(); node.tagName = tag; node.className = tag === 'button' ? 'button' : ''; return node; },
+    };
+    const html = guestPage('party-room');
+    const script = html.match(/<script>\n([\s\S]*?)\n<\/script>/)?.[1];
+    if (!script) throw new Error('guest page has no script');
+    const run = new Function('document', 'localStorage', 'location', 'history', 'fetch', 'setTimeout', 'clearTimeout', 'setInterval', 'URLSearchParams', 'globalThis', script);
+    run(document, {
+        getItem: (key: string) => storage.get(key) || null,
+        setItem: (key: string, value: string) => storage.set(key, String(value)),
+        removeItem: (key: string) => storage.delete(key),
+    }, { hash: '', pathname: '/', search: '' }, { replaceState() {} }, options.fetch, (callback: () => void) => { timers.push(callback); return timers.length; }, () => {}, (callback: () => void) => { timers.push(callback); return timers.length; }, URLSearchParams, { crypto: undefined });
+    return { nodes, storage, timers };
+}
+
+describe('guest UI resilience', () => {
+    it('keeps a saved token through a startup network outage and recovers on its retry timer', async () => {
+        let attempts = 0;
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async () => {
+                attempts++;
+                if (attempts === 1) throw new TypeError('network down');
+                return response(200, { current: { itemId: 'now', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'playing', error: null, lastSeen: Date.now(), volume: .75 } });
+            },
+        });
+
+        await settle();
+
+        expect(page.storage.get('karaoke-token-party-room')).toBe('saved-token');
+        expect(page.nodes.get('controller-shell')?.hidden).toBe(false);
+        expect(page.nodes.get('control-status')?.textContent).toMatch(/disconnected|retrying/i);
+        page.timers[0]!();
+        await settle();
+        expect(page.nodes.get('control-toggle')!.getAttribute('aria-label')).toBe('Pause playback');
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/connected/i);
+        // The periodic retry remains active after recovery; a subsequent successful
+        // refresh keeps the authoritative connected state.
+        page.timers[0]!();
+        await settle();
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/connected/i);
+    });
+
+    it('ignores an older full-search response after a newer search completes', async () => {
+        const firstSearch = deferred<any>();
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path, init) => {
+                if (path === '/status') return response(200, { current: null, queue: [], history: [], playback: {} });
+                const query = JSON.parse(String(init?.body)).query;
+                if (query === 'first') return firstSearch.promise;
+                return response(200, { items: [{ id: 'new-song', title: 'New song' }] });
+            },
+        });
+        await settle();
+
+        page.nodes.get('karaoke-search')!.value = 'first';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+        page.nodes.get('karaoke-search')!.value = 'second';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+        firstSearch.resolve(response(200, { items: [{ id: 'old-song', title: 'Old song' }] }));
+        await settle();
+
+        expect(page.nodes.get('results')!.children[0]?.dataset.videoId).toBe('new-song');
+        expect(page.nodes.get('search-status')!.textContent).toBe('1 results');
+    });
+
+    it('preserves prior useful results when a later search errors', async () => {
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path, init) => {
+                if (path === '/status') return response(200, { current: null, queue: [], history: [], playback: {} });
+                return JSON.parse(String(init?.body)).query === 'good'
+                    ? response(200, { items: [{ id: 'kept-song', title: 'Keep this' }] })
+                    : response(503);
+            },
+        });
+        await settle();
+        page.nodes.get('karaoke-search')!.value = 'good';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+        page.nodes.get('karaoke-search')!.value = 'offline';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+
+        expect(page.nodes.get('results')!.children[0]?.dataset.videoId).toBe('kept-song');
+        expect(page.nodes.get('search-status')!.textContent).toMatch(/search failed/i);
+    });
+
+    it('keeps tokens for server errors but clears them for an explicit 401', async () => {
+        const unavailable = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async () => response(503),
+        });
+        const rejected = boot({
+            stored: { 'karaoke-token-party-room': 'bad-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async () => response(401),
+        });
+        await settle();
+
+        expect(unavailable.storage.get('karaoke-token-party-room')).toBe('saved-token');
+        expect(rejected.storage.get('karaoke-token-party-room')).toBeUndefined();
+        expect(rejected.nodes.get('auth-gate')!.hidden).toBe(false);
+    });
+
+    it('disables an add mutation only while it is pending and restores it after failure', async () => {
+        const queueRequest = deferred<any>();
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path, init) => {
+                if (path === '/status') return response(200, { current: null, queue: [], history: [], playback: {} });
+                if (path === '/search') return response(200, { items: [{ id: 'song-id', title: 'Song' }] });
+                if (path === '/queue') return queueRequest.promise;
+                throw new Error(`unexpected ${path} ${String(init?.body)}`);
+            },
+        });
+        await settle();
+        page.nodes.get('karaoke-search')!.value = 'song';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+
+        const add = page.nodes.get('results')!.children[0]!.querySelector('.quick-add')!;
+        add.dispatch('click');
+        await settle();
+        expect(add.disabled).toBe(true);
+        queueRequest.resolve(response(500));
+        await settle();
+
+        expect(add.disabled).toBe(false);
+        expect(page.nodes.get('queue-status')!.textContent).toBe('');
+    });
+
+    it('uses the shared observed playback state for every phone and restores controls after a failed command', async () => {
+        const status = { current: { itemId: 'now', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'paused', error: null, lastSeen: Date.now(), volume: .5 } };
+        const resumeRequest = deferred<any>();
+        const requests: string[] = [];
+        const makePhone = () => boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path) => {
+                requests.push(path);
+                if (path === '/status') return response(200, status);
+                return resumeRequest.promise;
+            },
+        });
+        const phoneA = makePhone();
+        const phoneB = makePhone();
+        await settle();
+
+        for (const phone of [phoneA, phoneB]) {
+            expect(phone.nodes.get('control-toggle')!.getAttribute('aria-label')).toBe('Resume playback');
+            expect(phone.nodes.get('control-toggle')!.textContent).toBe('▶');
+        }
+        const toggle = phoneA.nodes.get('control-toggle')!;
+        toggle.dispatch('click');
+        await settle();
+        expect(toggle.disabled).toBe(true);
+        resumeRequest.reject(new TypeError('controller lost'));
+        await settle();
+
+        expect(requests).toContain('/control/resume');
+        expect(toggle.disabled).toBe(false);
+        expect(toggle.getAttribute('aria-label')).toBe('Resume playback');
+        expect(toggle.textContent).toBe('▶');
+    });
+
+    it('sends skip with the displayed current item and refreshes stale-song feedback', async () => {
+        let skipBody: unknown;
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path, init) => {
+                if (path === '/status') return response(200, { current: { itemId: 'displayed-item', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'playing', error: null, lastSeen: Date.now(), volume: .75 } });
+                if (path === '/control/skip') { skipBody = JSON.parse(String(init?.body)); return response(409); }
+                throw new Error(`unexpected ${path}`);
+            },
+        });
+        await settle();
+
+        const skip = page.nodes.get('control-skip')!;
+        skip.dispatch('click');
+        await settle();
+
+        expect(skipBody).toEqual({ expectedItemId: 'displayed-item' });
+        expect(skip.disabled).toBe(false);
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/song changed|stale/i);
+    });
+});

@@ -41,10 +41,11 @@ const json = (response: Response) => response.json() as Promise<any>;
 describe('standalone control-plane process', () => {
   it('authenticates, enqueues, polls play, and accepts ended', async () => {
     expect((await fetch(`${baseUrl}/status`)).status).toBe(401);
-    expect((await request('/queue', { method: 'POST', body: JSON.stringify({ itemId: 'integration-item', videoId: 'integration-video' }) })).status).toBe(201);
+    const videoId = 'dQw4w9WgXcQ';
+    expect((await request('/queue', { method: 'POST', body: JSON.stringify({ itemId: 'integration-item', videoId }) })).status).toBe(201);
     const play = await json(await request('/command?after=0'));
-    expect(play.command).toMatchObject({ type: 'play', videoId: 'integration-video' });
-    expect((await request('/events', { method: 'POST', body: JSON.stringify({ type: 'ended', roomId: 'integration-room', sequence: play.sequence, timestamp: Date.now(), itemId: 'integration-item', videoId: 'integration-video' }) })).status).toBe(204);
+    expect(play.command).toMatchObject({ type: 'play', videoId });
+    expect((await request('/events', { method: 'POST', body: JSON.stringify({ type: 'ended', commandId: play.command.commandId, roomId: 'integration-room', sequence: 1, timestamp: Date.now(), itemId: 'integration-item', videoId }) })).status).toBe(204);
     expect((await json(await request('/status'))).current).toBeNull();
   });
 });

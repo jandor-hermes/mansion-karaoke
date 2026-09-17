@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Mansion Karaoke Firefox Player",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Mansion Karaoke playback provider for one normal YouTube tab.",
   "permissions": ["tabs", "storage", "http://127.0.0.1:3010/*", "https://www.youtube.com/*"],
   "background": { "scripts": ["background.js"] },

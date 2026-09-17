@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src/index.js';
+import { itemIdSchema, videoIdSchema, playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src/index.js';
 import { createUnavailableSearchAdapter, type SearchAdapter } from './search.js';
 import { guestPage } from './guest-ui.js';
 
@@ -23,9 +23,8 @@ const queueMetadataFields = ['title', 'channel', 'duration', 'thumbnail', 'reque
 function parseQueueItem(value: unknown): QueueItem | null {
     if (!value || typeof value !== 'object') return null;
     const candidate = value as Record<string, unknown>;
-    if (typeof candidate.itemId !== 'string' || candidate.itemId.length === 0
-        || typeof candidate.videoId !== 'string' || candidate.videoId.length === 0) return null;
-    const item: QueueItem = { itemId: candidate.itemId, videoId: candidate.videoId };
+    if (!itemIdSchema.safeParse(candidate.itemId).success || !videoIdSchema.safeParse(candidate.videoId).success) return null;
+    const item: QueueItem = { itemId: candidate.itemId as string, videoId: candidate.videoId as string };
     for (const field of queueMetadataFields) {
         if (candidate[field] !== undefined && typeof candidate[field] !== 'string') return null;
         if (typeof candidate[field] === 'string') item[field] = candidate[field];
@@ -86,6 +85,12 @@ export function createControlPlane(options: Options): ControlPlane {
     const commands: Array<{ sequence: number; command: PlaybackCommand }> = [];
     let current: QueueItem | null = null;
     let sequence = 0;
+    const instanceId = randomUUID();
+    let activeCommand: Extract<PlaybackCommand, { type: 'play' }> | null = null;
+    const playback: { state: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'; error: string | null; lastSeen: number | null; volume: number } = { state: 'idle', error: null, lastSeen: null, volume: .75 };
+    let desiredPaused = false;
+    let lastEventSequence = 0;
+    const acceptedEvents = new Set<string>();
     let server: Server | undefined;
     let url = '';
     const bind = options.bind ?? resolveBindAddress(process.env);
@@ -98,20 +103,27 @@ export function createControlPlane(options: Options): ControlPlane {
         return value.toString();
     };
 
-    const issue = (command: PlaybackCommand) => { commands.push({ sequence: ++sequence, command }); };
+    const issue = (command: PlaybackCommand) => {
+        if (command.type === 'play') { lastEventSequence = 0; activeCommand = command; playback.state = 'loading'; playback.error = null; desiredPaused = false; }
+        if (command.type === 'pause') desiredPaused = true;
+        if (command.type === 'resume') desiredPaused = false;
+        if (command.type === 'setVolume') playback.volume = command.volume;
+        commands.push({ sequence: ++sequence, command });
+    };
     const commandFor = (type: PlaybackCommand['type'], extra: Record<string, unknown> = {}): PlaybackCommand => playbackCommandSchema.parse({
-        type, commandId: randomUUID(), roomId: options.roomId, issuedAt: Date.now(), ...extra,
+        ...extra, type, commandId: randomUUID(), roomId: options.roomId, issuedAt: Date.now(),
     });
     const startNext = () => {
         current = queue.shift() ?? null;
         if (current) issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
+        else activeCommand = null;
     };
     const hasItemId = (itemId: string) => current?.itemId === itemId || queue.some((item) => item.itemId === itemId);
     const remember = (item: QueueItem, reason: 'ended' | 'skipped' | 'replaced', completedAt = Date.now()) => {
         history.unshift({ ...item, completedAt, reason });
         if (history.length > 100) history.length = 100;
     };
-    const skip = () => { if (current) { issue(commandFor('skip')); remember(current, 'skipped'); current = null; startNext(); } };
+    const skip = () => { if (current) { issue(commandFor('skip')); remember(current, 'skipped'); current = null; playback.state = 'idle'; playback.error = null; startNext(); } };
     const body = async (request: IncomingMessage) => {
         let data = ''; for await (const chunk of request) data += chunk;
         return data ? JSON.parse(data) : {};
@@ -143,7 +155,7 @@ export function createControlPlane(options: Options): ControlPlane {
         const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
             if (request.method === 'GET' && urlObject.pathname === '/join-info') return send(response, 200, { joinUrl: joinUrl() });
-            if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, current, queue, history, sequence });
+            if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, instanceId, current, queue, history, sequence, playback, activeCommand, desiredPaused });
             if (request.method === 'POST' && urlObject.pathname === '/search') {
                 const value = await body(request) as { query?: unknown; continuation?: unknown };
                 if (typeof value.query !== 'string' || value.query.trim().length === 0) return send(response, 400, { error: 'query required' });
@@ -174,9 +186,10 @@ export function createControlPlane(options: Options): ControlPlane {
                 }
             }
             if (request.method === 'GET' && urlObject.pathname === '/command') {
+                playback.lastSeen = Date.now();
                 const after = Number(urlObject.searchParams.get('after') ?? 0);
                 const next = commands.find((entry) => entry.sequence > after);
-                return send(response, 200, next ? next : { command: null, sequence });
+                return send(response, 200, { ...(next ?? { command: null, sequence }), instanceId });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue') {
                 const value = parseQueueItem(await body(request));
@@ -241,16 +254,34 @@ export function createControlPlane(options: Options): ControlPlane {
             }
             if (request.method === 'POST' && urlObject.pathname === '/events') {
                 const event = playbackEventSchema.parse(await body(request)) as PlaybackEvent;
-                if (event.type === 'ended' && current?.itemId === event.itemId) { remember(current, 'ended', event.timestamp); current = null; startNext(); }
+                const key = JSON.stringify(event);
+                if (acceptedEvents.has(key)) return send(response, 204);
+                if (!current || event.roomId !== options.roomId || event.itemId !== current.itemId || event.videoId !== current.videoId || event.commandId !== activeCommand?.commandId) return send(response, 409, { error: 'stale playback identity' });
+                if (event.sequence <= lastEventSequence) return send(response, 409, { error: 'stale event sequence' });
+                lastEventSequence = event.sequence;
+                acceptedEvents.add(key);
+                if (acceptedEvents.size > 512) acceptedEvents.delete(acceptedEvents.values().next().value!);
+                playback.lastSeen = Date.now();
+                if (event.type !== 'ready') playback.state = event.type;
+                if (event.type === 'error') playback.error = event.message;
+                else if (event.type === 'playing' || event.type === 'paused') playback.error = null;
+                if (event.type === 'ended') { remember(current, 'ended', event.timestamp); current = null; startNext(); }
                 return send(response, 204);
             }
-            if (request.method === 'POST' && urlObject.pathname === '/control/skip') { skip(); return send(response, 204); }
+            if (request.method === 'POST' && urlObject.pathname === '/control/skip') {
+                const value = await body(request);
+                if (value.expectedItemId !== undefined) {
+                    if (!itemIdSchema.safeParse(value.expectedItemId).success) return send(response, 400, { error: 'invalid expectedItemId' });
+                    if (value.expectedItemId !== current?.itemId) return send(response, 409, { error: 'current item changed' });
+                }
+                skip(); return send(response, 204);
+            }
             if (request.method === 'POST' && urlObject.pathname === '/control/fullscreen') { issue(commandFor('fullscreen')); return send(response, 204); }
             if (request.method === 'POST' && ['/control/pause', '/control/resume', '/control/volume'].includes(urlObject.pathname)) {
                 const type = urlObject.pathname.slice('/control/'.length) as 'pause' | 'resume' | 'volume';
                 const value = type === 'volume' ? await body(request) as { volume: number } : {};
                 const commandType = type === 'volume' ? 'setVolume' : type;
-                issue(commandFor(commandType, value)); return send(response, 204);
+                issue(commandFor(commandType, type === 'volume' ? { volume: (value as { volume: unknown }).volume } : {})); return send(response, 204);
             }
             return send(response, 404, { error: 'not found' });
         } catch (error) { return send(response, 400, { error: error instanceof Error ? error.message : 'bad request' }); }

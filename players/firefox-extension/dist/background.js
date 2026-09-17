@@ -4048,7 +4048,9 @@
   var NEVER = INVALID;
 
   // packages/playback-protocol/src/index.ts
-  var nonEmptyString = external_exports.string().trim().min(1);
+  var nonEmptyString = external_exports.string().min(1).refine((value) => value === value.trim(), "must be canonical");
+  var itemIdSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+  var videoIdSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{11}$/);
   var timestamp = external_exports.number().finite().int().nonnegative();
   var sequence = external_exports.number().int().positive();
   var commandBase = external_exports.object({
@@ -4059,8 +4061,8 @@
   var playbackCommandSchema = external_exports.discriminatedUnion("type", [
     commandBase.extend({
       type: external_exports.literal("play"),
-      itemId: nonEmptyString,
-      videoId: nonEmptyString,
+      itemId: itemIdSchema,
+      videoId: videoIdSchema,
       position: external_exports.number().finite().nonnegative().default(0)
     }),
     commandBase.extend({ type: external_exports.literal("pause") }),
@@ -4073,13 +4075,14 @@
     commandBase.extend({ type: external_exports.literal("fullscreen") })
   ]);
   var eventBase = external_exports.object({
+    commandId: nonEmptyString,
     roomId: nonEmptyString,
     sequence,
     timestamp
   });
   var itemEvent = eventBase.extend({
-    itemId: nonEmptyString,
-    videoId: nonEmptyString,
+    itemId: itemIdSchema,
+    videoId: videoIdSchema,
     position: external_exports.number().finite().nonnegative().optional()
   });
   var playbackEventSchema = external_exports.discriminatedUnion("type", [
@@ -4092,8 +4095,8 @@
       type: external_exports.literal("error"),
       code: nonEmptyString,
       message: nonEmptyString,
-      itemId: nonEmptyString.optional(),
-      videoId: nonEmptyString.optional()
+      itemId: itemIdSchema,
+      videoId: videoIdSchema
     })
   ]);
 
@@ -4117,102 +4120,85 @@
   }
 
   // players/firefox-extension/src/index.ts
-  function isVerifiedLoad(result, videoId) {
-    const value = parseLoadVideoResult(result);
-    return value?.ok === true && value.videoId === videoId;
-  }
-  var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle" });
+  var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle", volume: 0.75 });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
-    constructor(tabs, sendMessage = async () => void 0, windows, loadTimeoutMs = 2500) {
+    constructor(tabs, sendMessage = async () => void 0, windows, loadTimeoutMs = 8e3) {
       this.tabs = tabs;
       this.sendMessage = sendMessage;
       this.windows = windows;
       this.loadTimeoutMs = loadTimeoutMs;
     }
-    async sendLoadVideo(tabId, videoId, position) {
+    async sendLoadVideo(tabId, message) {
       let timeout;
       try {
-        return await Promise.race([
-          this.sendMessage(tabId, { type: "loadVideo", videoId, position }),
-          new Promise((_, reject) => {
-            timeout = setTimeout(() => reject(new Error("same-document load timed out")), this.loadTimeoutMs);
-          })
-        ]);
+        return await Promise.race([this.sendMessage(tabId, message), new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("same-document load timed out")), this.loadTimeoutMs);
+        })]);
       } finally {
         if (timeout !== void 0) clearTimeout(timeout);
       }
     }
     async route(input, state) {
       const command = playbackCommandSchema.parse(input);
-      debug("command received", { type: command.type, sequence: state.status, videoId: command.type === "play" ? command.videoId : state.videoId });
+      debug("command received", { type: command.type, commandId: command.commandId });
       if (command.type === "play") {
-        const url = `https://www.youtube.com/watch?v=${encodeURIComponent(command.videoId)}`;
+        const identity = { commandId: command.commandId, itemId: command.itemId, videoId: command.videoId, roomId: command.roomId };
+        Object.assign(state, identity, { status: "loading" });
+        const presentation = state.presentation ?? false;
+        const volume = state.volume ?? 0.75;
+        const paused = state.desiredPaused ?? false;
+        const bootstrap = { ...command, presentation, volume, paused };
+        const url = `https://www.youtube.com/watch?v=${command.videoId}#karaoke=${encodeURIComponent(JSON.stringify(bootstrap))}`;
+        if (state.tabId !== null) {
+          try {
+            const existing = await this.tabs.get(state.tabId);
+            state.windowId = existing.windowId ?? state.windowId ?? null;
+          } catch {
+            state.tabId = null;
+          }
+        }
         if (state.tabId === null) {
           const tab = await this.tabs.create({ url, active: true });
           state.tabId = tab.id ?? null;
           state.windowId = tab.windowId ?? null;
-          console.debug("[karaoke-player] created YouTube tab", { tabId: state.tabId, windowId: state.windowId, url });
-        } else {
-          try {
-            const existing = await this.tabs.get(state.tabId);
-            state.windowId = existing.windowId ?? state.windowId ?? null;
-          } catch (error) {
-            console.debug("[karaoke-player] existing tab unavailable; creating YouTube tab", { error });
-            const tab = await this.tabs.create({ url, active: true });
-            state.tabId = tab.id ?? null;
-            state.windowId = tab.windowId ?? null;
-            state.itemId = command.itemId;
-            state.videoId = command.videoId;
-            state.roomId = command.roomId;
-            state.status = "loading";
-            return;
-          }
-          state.itemId = command.itemId;
-          state.videoId = command.videoId;
-          state.roomId = command.roomId;
-          state.status = "loading";
-          console.debug("[karaoke-player] reusing YouTube tab", { tabId: state.tabId, windowId: state.windowId });
-          try {
-            const result = await this.sendLoadVideo(state.tabId, command.videoId, command.position);
-            if (isVerifiedLoad(result, command.videoId)) return;
-          } catch (error) {
-            console.debug("[karaoke-player] same-document load failed; using full navigation", { error });
-          }
-          await this.tabs.update(state.tabId, { url, active: true });
+          return;
         }
-        state.itemId = command.itemId;
-        state.videoId = command.videoId;
-        state.roomId = command.roomId;
-        state.status = "loading";
+        try {
+          const result = parseLoadVideoResult(await this.sendLoadVideo(state.tabId, { type: "loadVideo", ...identity, position: command.position, presentation, volume, paused }));
+          if (result?.ok && result.videoId === command.videoId) return;
+        } catch (error) {
+          debug("same-document load failed; using full navigation", { error });
+        }
+        await this.tabs.update(state.tabId, { url, active: true });
         return;
       }
       if (command.type === "skip") {
-        state.status = "ended";
-        debug("skip applied");
+        delete state.commandId;
+        delete state.itemId;
+        delete state.videoId;
+        delete state.roomId;
+        state.status = "idle";
+        state.desiredPaused = false;
+        if (state.tabId !== null) await this.sendMessage(state.tabId, { type: "skip" });
         return;
       }
       if (command.type === "fullscreen") {
+        state.presentation = true;
         if (state.tabId === null) {
           console.error("[karaoke-player] fullscreen failed: player tab unavailable");
           return;
         }
         try {
           await this.sendMessage(state.tabId, { type: "fullscreen" });
-          debug("video presentation applied", { tabId: state.tabId });
         } catch (error) {
-          console.error("[karaoke-player] video presentation failed", { tabId: state.tabId, error });
+          console.error("[karaoke-player] video presentation failed", error);
         }
-        if (state.windowId != null && this.windows) {
-          try {
-            await this.windows.update(state.windowId, { state: "fullscreen" });
-            debug("window fullscreen applied", { windowId: state.windowId });
-          } catch (error) {
-            console.error("[karaoke-player] window fullscreen failed", { windowId: state.windowId, error });
-          }
-        }
+        if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
         return;
       }
+      if (command.type === "setVolume") state.volume = command.volume;
+      if (command.type === "pause" || command.type === "resume") state.desiredPaused = command.type === "pause";
       if (state.tabId === null) return;
       if (command.type === "pause" || command.type === "resume") await this.sendMessage(state.tabId, { type: command.type });
       if (command.type === "setVolume") await this.sendMessage(state.tabId, { type: "setVolume", volume: command.volume });
@@ -4222,27 +4208,47 @@
     const baseUrl = options.baseUrl.replace(/\/$/, "");
     const fetcher = options.fetcher ?? fetch;
     const headers = { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" };
+    const request = (path, init = {}) => fetcher(`${baseUrl}${path}`, { headers, cache: "no-store", signal: AbortSignal.timeout(5e3), ...init });
     return {
       async joinInfo() {
-        const response = await fetcher(`${baseUrl}/join-info`, { headers, cache: "no-store" });
+        const response = await request("/join-info");
         if (!response.ok) throw new Error(`Join info failed: ${response.status}`);
         const payload = await response.json();
-        if (!payload || typeof payload !== "object" || typeof payload.joinUrl !== "string") throw new Error("Malformed join info response");
+        if (typeof payload?.joinUrl !== "string") throw new Error("Malformed join info response");
         return payload;
       },
+      async status() {
+        const response = await request("/status");
+        if (!response.ok) throw new Error(`Controller status failed: ${response.status}`);
+        const value = await response.json();
+        if (typeof value?.instanceId !== "string" || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !value.playback || typeof value.playback.volume !== "number") throw new Error("Malformed controller status");
+        const activeCommand = value.activeCommand === null ? null : playbackCommandSchema.parse(value.activeCommand);
+        if (activeCommand && activeCommand.type !== "play") throw new Error("Malformed active command");
+        return { instanceId: value.instanceId, sequence: value.sequence, activeCommand, desiredPaused: value.desiredPaused === true, volume: value.playback.volume };
+      },
       async poll(after) {
-        const response = await fetcher(`${baseUrl}/command?after=${after}`, { headers, cache: "no-store" });
+        const response = await request(`/command?after=${after}`);
         if (!response.ok) throw new Error(`Controller poll failed: ${response.status}`);
-        const payload = await response.json();
-        if (!payload || typeof payload !== "object" || !("command" in payload) || !("sequence" in payload)) throw new Error("Malformed controller response");
-        const value = payload;
-        if (value.command !== null) playbackCommandSchema.parse(value.command);
-        if (typeof value.sequence !== "number" || !Number.isInteger(value.sequence) || value.sequence < 0) throw new Error("Malformed controller response");
-        return { command: value.command, sequence: value.sequence };
+        const value = await response.json();
+        if (!value || typeof value.instanceId !== "string" || !Number.isSafeInteger(value.sequence) || value.sequence < 0) throw new Error("Malformed controller response");
+        const command = value.command === null ? null : playbackCommandSchema.parse(value.command);
+        return { command, sequence: value.sequence, instanceId: value.instanceId };
       },
       async publish(event) {
-        const valid = playbackEventSchema.parse(event);
-        return fetcher(`${baseUrl}/events`, { method: "POST", headers, body: JSON.stringify(valid) });
+        const body = JSON.stringify(playbackEventSchema.parse(event));
+        const attempts = event.type === "ended" || event.type === "error" ? 3 : 1;
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          let retryable = true;
+          try {
+            const response = await request("/events", { method: "POST", body });
+            if (response.ok || response.status === 409) return;
+            retryable = response.status >= 500 || response.status === 429;
+            throw new Error(`Event publish failed: ${response.status}`);
+          } catch (error) {
+            if (!retryable || attempt === attempts - 1) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
+          }
+        }
       }
     };
   }
@@ -4269,16 +4275,19 @@
   }
   function enrichContentEvent(input, active, previousSequence, timestamp2) {
     const mapped = mapDomEvent(input);
-    if (!mapped || !active.roomId || !active.itemId || !active.videoId) return null;
+    if (!mapped || !active.commandId || !active.roomId || !active.itemId || !active.videoId) return null;
+    if (input.commandId !== active.commandId || input.roomId !== active.roomId || input.itemId !== active.itemId || input.videoId !== active.videoId) return null;
     const event = {
       ...mapped,
+      commandId: active.commandId,
       roomId: active.roomId,
       itemId: active.itemId,
       videoId: active.videoId,
       sequence: Math.max(1, previousSequence + 1),
       timestamp: timestamp2
     };
-    return playbackEventSchema.parse(event);
+    const parsed = playbackEventSchema.safeParse(event);
+    return parsed.success ? parsed.data : null;
   }
 
   // players/firefox-extension/src/config.ts
@@ -4295,52 +4304,110 @@
   // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (tabId, message) => browserApi.tabs.sendMessage(tabId, message), browserApi.windows);
-    const initialStored = await browserApi.storage.local.get(["baseUrl", "token", "commandCursor"]);
-    let activeConfig = options ?? parseStoredConfig(initialStored);
+    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), browserApi.windows);
+    const stored = await browserApi.storage.local.get(["baseUrl", "token", "playerTabId"]);
+    let activeConfig = options ?? parseStoredConfig(stored);
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
-    let commandCursor = typeof initialStored.commandCursor === "number" && Number.isSafeInteger(initialStored.commandCursor) && initialStored.commandCursor >= 0 ? initialStored.commandCursor : Number.MAX_SAFE_INTEGER;
-    let eventSequence = 0;
+    let commandCursor = 0, instanceId = "", eventSequence = Date.now();
+    let needsReconcile = true;
     let timer = null;
     let pollInFlight = null;
     let surfaceReady = Promise.resolve();
-    let onMessageInstalled = false;
+    const pending = /* @__PURE__ */ new Map();
     const ensurePlayerSurface = async (activate = false) => {
       if (!client) return;
       if (state.tabId !== null) {
-        if (activate) await browserApi.tabs.update(state.tabId, { active: true });
-        return;
+        try {
+          await browserApi.tabs.get(state.tabId);
+          if (activate) await browserApi.tabs.update(state.tabId, { active: true });
+          return;
+        } catch {
+          state.tabId = null;
+        }
       }
       if (typeof browserApi.tabs.query !== "function" || typeof browserApi.runtime.getURL !== "function") return;
       const displayUrl = browserApi.runtime.getURL("display.html");
       const tabs = await browserApi.tabs.query({});
-      const existing = tabs.find((tab2) => tab2.url === displayUrl || tab2.url?.startsWith("https://www.youtube.com/watch"));
+      const existing = tabs.find((tab2) => tab2.id === stored.playerTabId && (tab2.url === displayUrl || tab2.url?.startsWith("https://www.youtube.com/watch"))) ?? tabs.find((tab2) => tab2.url === displayUrl || tab2.url?.startsWith("https://www.youtube.com/watch") && tab2.url.includes("#karaoke="));
       const tab = existing ?? await browserApi.tabs.create({ url: displayUrl, active: true });
       state.tabId = tab.id ?? null;
       state.windowId = tab.windowId ?? null;
+      await browserApi.storage.local.set({ playerTabId: state.tabId });
       if (activate && existing && state.tabId !== null) await browserApi.tabs.update(state.tabId, { active: true });
-      console.debug("[karaoke-player] player surface ready", { tabId: state.tabId, windowId: state.windowId, reused: Boolean(existing) });
     };
-    const runPoll = async () => {
-      if (!client) {
-        console.debug("[karaoke-player] poll skipped: no controller token");
-        return;
+    const publish = async (event) => {
+      const target = client;
+      if (!target) return;
+      const key = `${event.commandId}:${event.sequence}`;
+      if (event.type === "ended" || event.type === "error") {
+        pending.set(key, event);
+        if (pending.size > 32) pending.delete(pending.keys().next().value);
       }
       try {
-        await surfaceReady;
-        console.debug("[karaoke-player] polling controller", { baseUrl: activeConfig.baseUrl, after: commandCursor });
-        let result = await client.poll(commandCursor);
-        if (!result.command && commandCursor !== Number.MAX_SAFE_INTEGER && result.sequence < commandCursor) {
-          console.debug("[karaoke-player] controller restart detected; resetting command cursor", { previous: commandCursor, current: result.sequence });
-          commandCursor = 0;
-          result = await client.poll(0);
+        await target.publish(event);
+        pending.delete(key);
+      } catch (error) {
+        console.error("[karaoke-player] event delivery pending", error);
+      }
+    };
+    const apply = async (command) => {
+      try {
+        await router.route(command, state);
+      } catch (error) {
+        console.error("[karaoke-player] command failed; later controls remain available", error);
+        const event = enrichContentEvent({ ...state, type: "error", code: "COMMAND_FAILED", message: "Playback command failed. Check Firefox autoplay, then Resume or Skip." }, state, eventSequence, Date.now());
+        if (event) {
+          eventSequence = event.sequence;
+          await publish(event);
         }
-        if (result.command) {
-          await router.route(result.command, state);
-          console.debug("[karaoke-player] command applied", { type: result.command.type, sequence: result.sequence, tabId: state.tabId });
+      }
+    };
+    const reconcile = async () => {
+      if (!client) return;
+      const snapshot = await client.status();
+      if (instanceId && instanceId !== snapshot.instanceId) pending.clear();
+      instanceId = snapshot.instanceId;
+      state.volume = snapshot.volume;
+      state.desiredPaused = snapshot.desiredPaused;
+      if (snapshot.activeCommand) {
+        let observed = null;
+        if (state.tabId !== null) {
+          try {
+            observed = await browserApi.tabs.sendMessage(state.tabId, { type: "inspectPlayback" });
+          } catch {
+          }
+        }
+        const command = snapshot.activeCommand;
+        if (observed?.commandId === command.commandId && observed?.videoId === command.videoId && observed?.roomId === command.roomId && observed?.itemId === command.itemId) {
+          Object.assign(state, { commandId: command.commandId, roomId: command.roomId, itemId: command.itemId, videoId: command.videoId });
+          await browserApi.tabs.sendMessage(state.tabId, { type: "setVolume", volume: snapshot.volume });
+          await browserApi.tabs.sendMessage(state.tabId, { type: snapshot.desiredPaused ? "pause" : "resume" });
+          const event = enrichContentEvent(observed, state, eventSequence, Date.now());
+          if (event) {
+            eventSequence = event.sequence;
+            await publish(event);
+          }
+        } else await apply(command);
+      } else {
+        await apply({ type: "skip", commandId: "reconcile-idle", roomId: "local", issuedAt: Date.now() });
+      }
+      commandCursor = snapshot.sequence;
+      needsReconcile = false;
+    };
+    const runPoll = async () => {
+      if (!client) return;
+      try {
+        await surfaceReady;
+        for (const event of [...pending.values()]) await publish(event);
+        if (needsReconcile) await reconcile();
+        const result = await client.poll(commandCursor);
+        if (result.instanceId !== instanceId) await reconcile();
+        else if (result.command) {
+          if (result.command.type === "play") state.desiredPaused = false;
+          await apply(result.command);
           commandCursor = result.sequence;
-        } else commandCursor = commandCursor === Number.MAX_SAFE_INTEGER ? result.sequence : Math.max(commandCursor, result.sequence);
-        await browserApi.storage.local.set({ commandCursor });
+        } else commandCursor = Math.max(commandCursor, result.sequence);
+        await browserApi.storage.local.set({ commandCursor, controllerInstanceId: instanceId });
       } catch (error) {
         console.error("[karaoke-player] controller poll failed", error);
       }
@@ -4353,25 +4420,31 @@
       return pollInFlight;
     };
     const stop = () => {
-      if (timer !== null) {
-        clearInterval(timer);
-        timer = null;
-      }
+      if (timer !== null) clearInterval(timer);
+      timer = null;
     };
     const configure = (config) => {
       stop();
+      const changed = config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token;
       activeConfig = config;
       client = config.token ? createControllerClient(config) : null;
-      surfaceReady = client ? ensurePlayerSurface() : Promise.resolve();
-      console.debug("[karaoke-player] configuration updated", { baseUrl: config.baseUrl, hasToken: Boolean(config.token) });
+      if (changed) {
+        needsReconcile = true;
+        pending.clear();
+        instanceId = "";
+      }
+      surfaceReady = (pollInFlight ?? Promise.resolve()).then(() => ensurePlayerSurface());
       if (client) {
         timer = setInterval(() => void poll(), 750);
         void poll();
       }
     };
-    const onMessage = async (rawMessage) => {
-      if (rawMessage && typeof rawMessage === "object" && rawMessage.type === "startSession") {
-        const config = parseStoredConfig(rawMessage.config);
+    browserApi.runtime.onMessage.addListener(async (raw, sender) => {
+      if (!raw || typeof raw !== "object") return;
+      const message = raw;
+      if (message.type === "startSession") {
+        if (sender?.tab && message.config === void 0) return;
+        const config = parseStoredConfig(message.config);
         if (!config.token) return { ok: false, error: "Enter an authorization token first." };
         configure(config);
         await surfaceReady;
@@ -4380,23 +4453,27 @@
         return { ok: true, tabId: state.tabId };
       }
       if (!client) return;
-      if (rawMessage && typeof rawMessage === "object" && rawMessage.type === "getJoinInfo") return client.joinInfo();
-      const event = enrichContentEvent(rawMessage, state, eventSequence, Date.now());
+      if (message.type === "getJoinInfo") return client.joinInfo();
+      if (sender?.tab?.id !== state.tabId || sender?.frameId !== 0) return;
+      const event = enrichContentEvent(message, state, eventSequence, Date.now());
       if (event) {
-        console.debug("[karaoke-player] content event received", event);
         eventSequence = event.sequence;
-        void client.publish(event).then(() => console.debug("[karaoke-player] content event published", { type: event.type, sequence: event.sequence })).catch((error) => console.error("[karaoke-player] event publish failed", error));
+        state.status = event.type === "ready" ? "loading" : event.type;
+        await publish(event);
       }
-    };
-    if (!onMessageInstalled) {
-      browserApi.runtime.onMessage.addListener(onMessage);
-      onMessageInstalled = true;
-    }
-    browserApi.storage.onChanged?.addListener((changes) => {
-      if ("baseUrl" in changes || "token" in changes) void browserApi.storage.local.get(["baseUrl", "token"]).then((stored) => configure(parseStoredConfig(stored)));
     });
-    browserApi.tabs.onRemoved.addListener((tabId) => {
-      if (tabId === state.tabId) state.tabId = null;
+    browserApi.storage.onChanged?.addListener((changes) => {
+      if ("baseUrl" in changes || "token" in changes) void browserApi.storage.local.get(["baseUrl", "token"]).then((value) => {
+        const config = parseStoredConfig(value);
+        if (config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token) configure(config);
+      });
+    });
+    browserApi.tabs.onRemoved.addListener((id) => {
+      if (id === state.tabId) {
+        state.tabId = null;
+        needsReconcile = true;
+        surfaceReady = ensurePlayerSurface();
+      }
     });
     configure(activeConfig);
     return { state, poll, stop, configure };

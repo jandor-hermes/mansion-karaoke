@@ -23,7 +23,7 @@ export function requestPageLoad(
     node: BridgeNode,
     channel: string,
     value: unknown,
-    timeoutMs = 2000,
+    timeoutMs = 7000,
 ): Promise<LoadVideoResult> {
     const command = parseLoadVideoCommand(value);
     if (!command) return Promise.reject(new Error('invalid loadVideo command'));
