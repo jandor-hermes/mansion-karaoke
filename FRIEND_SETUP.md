@@ -6,7 +6,7 @@ Host requirement: macOS 13.0 or newer. Install [Firefox from Mozilla](https://ww
 
 ## Download the Mac app
 
-1. Open the latest [Mansion Karaoke release](https://github.com/jandor-hermes/mansion-karaoke/releases/latest).
+1. Use the **specific ZIP/version your host coordinator has rehearsed**, from [Mansion Karaoke releases](https://github.com/jandor-hermes/mansion-karaoke/releases) or a private handoff. Do not substitute a different “latest” build on party day. The coordinator should provide its version and SHA-256 checksum; a newer source checkout does not mean a newer downloadable app has been published.
 2. Download the correct file:
    - **Apple Silicon:** `Mansion-Karaoke-…-macOS-arm64.zip` for M1, M2, M3, M4, or newer Apple chips.
    - **Intel:** `Mansion-Karaoke-…-macOS-x86_64.zip` for older Intel Macs.
@@ -56,6 +56,24 @@ Anyone with the QR code or party token can control the session. Use it only on a
 
 YouTube may play ads, or a queued video may be unavailable or restricted. Press **Skip** to recover to the next song; search for another upload if needed.
 
+## Rehearse before guests arrive
+
+Use the exact app you will run at the party, the intended Wi-Fi, and two real phones. Leave time to fix setup issues before the event.
+
+- Play three queued songs; let one finish naturally and check that the next starts exactly once. Confirm lyrics, fullscreen, and sound from the intended TV/speakers—not just the Mac. Test microphones or a mixer separately if you use them.
+- Test pause/resume, volume, Skip, adding from both phones, moving/removing a queued song, and canceling an interrupt/clear confirmation.
+- Quit and reopen Firefox once, reload the temporary add-on, and reconnect. Separately quit and reopen Mansion Karaoke: **the queue resets**, so test this before collecting guests' requests.
+- Check recovery from an unavailable video and a brief network outage. If playback stalls, inspect the actual YouTube tab for an ad, consent/sign-in page, or autoplay prompt before skipping to a known-good upload.
+- Run for at least 30 minutes, including a quiet interval. If phones cannot reach the app, audio does not work, or transitions are unreliable, use a prechecked YouTube playlist manually rather than trying a new build during the party. That fallback still needs internet.
+
+### Keep the Mac awake
+
+Keep the Mac plugged in and its lid open. On a MacBook, look in **System Settings → Battery → Options** for **Prevent automatic sleeping on power adapter when the display is off** and enable it for the session. On desktop Macs, look under **Energy** or **Energy Saver**; the exact labels vary by macOS and hardware. Search System Settings for “sleep” if needed. Under **Lock Screen**, set the power-adapter display-off interval long enough for the session, and restore your usual settings afterward. Turn on a suitable Focus mode to suppress notifications on the TV.
+
+For hosts comfortable with Terminal, an alternative is `caffeinate -di`: leave that command running during the party and press **Control-C** afterward. It does not make closing a laptop lid safe; keep the lid open.
+
+If the Mac sleeps or changes networks, wake it, confirm the host still says Running, reconnect Firefox, and scan the current LAN address again from a phone. Reload the temporary extension if Firefox quit. Avoid restarting the host unless necessary, because that loses the queue.
+
 ## Update later
 
 Download the newer ZIP from [GitHub Releases](https://github.com/jandor-hermes/mansion-karaoke/releases), quit the old app, and replace it in Applications. The party token stored under `~/Library/Application Support/Mansion Karaoke/` remains in place.
@@ -66,8 +84,10 @@ Download the newer ZIP from [GitHub Releases](https://github.com/jandor-hermes/m
 
 - Confirm the phone and Mac are on the same Wi-Fi.
 - Avoid guest Wi-Fi networks that isolate devices from each other.
-- Allow incoming connections in the macOS firewall.
+- Allow incoming connections in **System Settings → Network → Firewall → Options** (labels vary by macOS). Allow Mansion Karaoke or its controller if listed; do not turn off the firewall globally.
 - Use the QR code or LAN address on the Firefox display, not `127.0.0.1`.
+- If the Mac has a VPN or several network adapters, compare the QR address with **System Settings → Wi-Fi → Details → TCP/IP** for the connected network. Open `http://<that-IP>:3010` on the phone and enter the app's token if the QR chose the wrong interface. Use the app's configured port if it differs. Do not disable an organization-required VPN without permission; choose a permitted network instead.
+- This beta uses plain HTTP with a shared party token. Use only a trusted LAN; do not expose it with router port forwarding or a public tunnel.
 
 ### The extension does not connect
 

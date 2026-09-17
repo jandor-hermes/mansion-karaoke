@@ -13,7 +13,8 @@ User authorized phased fixes, efficient workers, and interruption-safe progress.
 
 1. Luna guest worker: branch `fix/party-guest-status`, worktree `/Users/hermes/Documents/karaoke/party-guest-status`. Owns `apps/control-plane/src/guest-ui.ts` and guest UI tests only. Fix unchanged-snapshot freshness expiry and honest loading/connected copy. TDD and focused controller tests, then commit.
 2. Luna controller worker: branch `fix/party-controller-recovery`, worktree `/Users/hermes/Documents/karaoke/party-controller-recovery`. Owns controller `src/index.ts`, `src/server.ts`, `src/compiled-server.ts` and non-guest controller tests only. Add generation-scoped loading deadline (default 30 seconds) with actionable error, no automatic skip, safe late success, unchanged active identity, manual Skip recovery. Fix startup listen rejection/nonzero executable failure. TDD and focused tests, then commit.
-3. Parent owns integration, launcher readiness cleanup, packaging/build verification, friend runbook, this checkpoint, and the plan. No parallel edits to worker-owned files.
+3. Luna native worker: branch `fix/party-native-startup`, worktree `/Users/hermes/Documents/karaoke/party-native-startup`. Owns `packaging/macos/Launcher.swift`, `build-app.sh`, and native tests only. Bounded readiness requests, unready child cleanup, explicit pinned `BUN_BIN` selection. TDD; no GUI launch or writes to user Application Support.
+4. Parent owns integration, independent review, final packaging verification, friend runbook, this checkpoint, and the plan. No parallel edits to worker-owned files.
 
 ## Contract decisions
 
