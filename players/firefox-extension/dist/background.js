@@ -6,7 +6,7 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
   var external_exports = {};
   __export(external_exports, {
     BRAND: () => BRAND,
@@ -118,7 +118,7 @@
     void: () => voidType
   });
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
   var util;
   (function(util2) {
     util2.assertEqual = (_) => {
@@ -252,7 +252,7 @@
     }
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
   var ZodIssueCode = util.arrayToEnum([
     "invalid_type",
     "invalid_literal",
@@ -370,7 +370,7 @@
     return error;
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
   var errorMap = (issue, _ctx) => {
     let message;
     switch (issue.code) {
@@ -473,7 +473,7 @@
   };
   var en_default = errorMap;
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
   var overrideErrorMap = en_default;
   function setErrorMap(map) {
     overrideErrorMap = map;
@@ -482,7 +482,7 @@
     return overrideErrorMap;
   }
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
   var makeIssue = (params) => {
     const { data, path, errorMaps, issueData } = params;
     const fullPath = [...path, ...issueData.path || []];
@@ -592,14 +592,14 @@
   var isValid = (x) => x.status === "valid";
   var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
   var errorUtil;
   (function(errorUtil2) {
     errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
     errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
   })(errorUtil || (errorUtil = {}));
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
   var ParseInputLazyPath = class {
     constructor(parent, value, path, key) {
       this._cachedPath = [];
@@ -4047,7 +4047,7 @@
   };
   var NEVER = INVALID;
 
-  // packages/playback-protocol/src/index.ts
+  // ../../packages/playback-protocol/src/index.ts
   var nonEmptyString = external_exports.string().min(1).refine((value) => value === value.trim(), "must be canonical");
   var itemIdSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
   var videoIdSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{11}$/);
@@ -4100,7 +4100,7 @@
     })
   ]);
 
-  // players/firefox-extension/src/load-video.ts
+  // src/load-video.ts
   var YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
   function parseLoadVideoResult(value) {
     if (!value || typeof value !== "object") return null;
@@ -4119,7 +4119,7 @@
     };
   }
 
-  // players/firefox-extension/src/index.ts
+  // src/index.ts
   var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle", volume: 0.75 });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
@@ -4239,7 +4239,16 @@
         if (typeof value?.instanceId !== "string" || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !value.playback || typeof value.playback.volume !== "number") throw new Error("Malformed controller status");
         const activeCommand = value.activeCommand === null ? null : playbackCommandSchema.parse(value.activeCommand);
         if (activeCommand && activeCommand.type !== "play") throw new Error("Malformed active command");
-        return { instanceId: value.instanceId, sequence: value.sequence, activeCommand, desiredPaused: value.desiredPaused === true, volume: value.playback.volume };
+        return {
+          instanceId: value.instanceId,
+          sequence: value.sequence,
+          activeCommand,
+          desiredPaused: value.desiredPaused === true,
+          volume: value.playback.volume,
+          current: value.current ?? null,
+          queue: Array.isArray(value.queue) ? value.queue : [],
+          playbackState: typeof value.playback?.state === "string" ? value.playback.state : "idle"
+        };
       },
       async poll(after) {
         const response = await request(`/command?after=${after}`);
@@ -4268,7 +4277,7 @@
     };
   }
 
-  // players/firefox-extension/src/events.ts
+  // src/events.ts
   var DOM_EVENT_TYPES = {
     loadedmetadata: "ready",
     ready: "ready",
@@ -4305,18 +4314,32 @@
     return parsed.success ? parsed.data : null;
   }
 
-  // players/firefox-extension/src/config.ts
+  // src/config.ts
   var DEFAULT_CONTROLLER_URL = "http://127.0.0.1:3010";
+  var DEFAULT_OVERLAY_SETTINGS = { nowSinging: true, upNextSeconds: 20, upNextAlways: false };
+  var UP_NEXT_SECONDS_MIN = 0;
+  var UP_NEXT_SECONDS_MAX = 600;
+  function parseOverlaySettings(value) {
+    if (!value || typeof value !== "object") return { ...DEFAULT_OVERLAY_SETTINGS };
+    const stored = value;
+    const seconds = typeof stored.upNextSeconds === "number" && Number.isFinite(stored.upNextSeconds) ? Math.min(UP_NEXT_SECONDS_MAX, Math.max(UP_NEXT_SECONDS_MIN, Math.round(stored.upNextSeconds))) : DEFAULT_OVERLAY_SETTINGS.upNextSeconds;
+    return {
+      nowSinging: typeof stored.nowSinging === "boolean" ? stored.nowSinging : DEFAULT_OVERLAY_SETTINGS.nowSinging,
+      upNextSeconds: seconds,
+      upNextAlways: typeof stored.upNextAlways === "boolean" ? stored.upNextAlways : DEFAULT_OVERLAY_SETTINGS.upNextAlways
+    };
+  }
   function parseStoredConfig(value) {
-    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "" };
+    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "", overlay: { ...DEFAULT_OVERLAY_SETTINGS } };
     const stored = value;
     return {
       baseUrl: typeof stored.baseUrl === "string" ? stored.baseUrl : DEFAULT_CONTROLLER_URL,
-      token: typeof stored.token === "string" ? stored.token : ""
+      token: typeof stored.token === "string" ? stored.token : "",
+      overlay: parseOverlaySettings(stored.overlay)
     };
   }
 
-  // players/firefox-extension/src/background.ts
+  // src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
     const windows = browserApi.windows;
@@ -4324,6 +4347,7 @@
     const stored = await browserApi.storage.local.get(["baseUrl", "token", "playerTabId"]);
     const log = (...args) => console.info("[karaoke-player]", ...args);
     let activeConfig = options ?? parseStoredConfig(stored);
+    let overlaySettings = activeConfig.overlay;
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0, instanceId = "", eventSequence = Date.now();
     let needsReconcile = true;
@@ -4361,6 +4385,23 @@
         log("focus", { tabId: state.tabId, windowId: state.windowId });
       }
     };
+    let lastOverlayKey = "";
+    const pushOverlay = async (info) => {
+      const key = JSON.stringify([info, overlaySettings]);
+      if (key === lastOverlayKey || state.tabId === null) return;
+      lastOverlayKey = key;
+      try {
+        await browserApi.tabs.sendMessage(state.tabId, { type: "updateSingerOverlay", info, settings: overlaySettings });
+      } catch {
+        lastOverlayKey = "";
+      }
+    };
+    const overlayInfoFromStatus = (snapshot) => ({
+      current: snapshot.current ?? null,
+      next: snapshot.queue?.[0] ?? null,
+      playing: snapshot.playbackState === "playing" || snapshot.playbackState === "loading",
+      remainingSeconds: null
+    });
     const publish = async (event) => {
       const target = client;
       if (!target) return;
@@ -4435,6 +4476,13 @@
           await apply(result.command);
           commandCursor = result.sequence;
         } else commandCursor = Math.max(commandCursor, result.sequence);
+        if (client) {
+          try {
+            await pushOverlay(overlayInfoFromStatus(await client.status()));
+          } catch (error) {
+            console.error("[karaoke-player] overlay status fetch failed", error);
+          }
+        }
         await browserApi.storage.local.set({ commandCursor, controllerInstanceId: instanceId });
       } catch (error) {
         console.error("[karaoke-player] controller poll failed", error);
@@ -4462,7 +4510,9 @@
         needsReconcile = true;
         pending.clear();
         instanceId = "";
+        lastOverlayKey = "";
       }
+      overlaySettings = config.overlay;
       surfaceReady = (pollInFlight ?? Promise.resolve()).then(() => ensurePlayerSurface());
       if (client) {
         timer = setInterval(() => void poll(), 750);
@@ -4494,11 +4544,26 @@
         state.status = event.type === "ready" ? "loading" : event.type;
         await publish(event);
       }
+      if (message.type === "updateOverlayNow") {
+        lastOverlayKey = "";
+        if (state.tabId !== null && sender?.tab?.id === state.tabId) {
+          try {
+            const snapshot = await client.status();
+            await pushOverlay(overlayInfoFromStatus(snapshot));
+          } catch {
+          }
+        }
+      }
     });
     browserApi.storage.onChanged?.addListener((changes) => {
-      if ("baseUrl" in changes || "token" in changes) void browserApi.storage.local.get(["baseUrl", "token"]).then((value) => {
+      if ("baseUrl" in changes || "token" in changes || "overlay" in changes) void browserApi.storage.local.get(["baseUrl", "token", "overlay"]).then((value) => {
         const config = parseStoredConfig(value);
         if (config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token) configure(config);
+        else if (JSON.stringify(config.overlay) !== JSON.stringify(overlaySettings)) {
+          overlaySettings = config.overlay;
+          lastOverlayKey = "";
+          void poll();
+        }
       });
     });
     browserApi.tabs.onRemoved.addListener((id) => {

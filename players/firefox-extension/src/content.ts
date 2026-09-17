@@ -2,6 +2,8 @@
 import { applyPresentation, clickYouTubeFullscreenButton, logPresentationDiagnostics, presentationMessage, activateTheaterMode } from './presentation';
 import { parseLoadVideoCommand, requestPageLoad } from './load-video';
 import { installJoinQr } from './join-qr';
+import { hideSingerOverlay, installSingerOverlay, showSingerOverlay, singerLabel, updateSingerOverlay, type OverlayInfo } from './singer-overlay';
+import type { OverlaySettings } from './config';
 import { playbackCommandSchema } from '../../../packages/playback-protocol/src';
 import type { PlaybackIdentity } from './index';
 
@@ -35,6 +37,26 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
     let playRetry: ReturnType<typeof setTimeout> | undefined;
     const MAX_PLAY_ATTEMPTS = 4;
     const adShowing = () => !!document.querySelector('.ad-showing, .ad-interrupting');
+    // Singer overlay state: labels arrive from the background poll; the
+    // remaining-time visibility for the timed "Up next" card is computed
+    // locally on every timeupdate so it appears exactly when configured.
+    let overlaySettings: OverlaySettings | null = null;
+    let overlayInfo: OverlayInfo = { current: null, next: null, playing: false, remainingSeconds: null };
+    let overlayNearEndAnnounced = false;
+    const renderOverlay = () => {
+        const element = video();
+        if (!element) return;
+        if (adShowing()) { hideSingerOverlay(document); return; }
+        showSingerOverlay(document);
+        if (overlaySettings) {
+            const remaining = Number.isFinite(element.duration) && element.duration > 0 && !element.paused
+                ? Math.max(0, element.duration - element.currentTime) : null;
+            updateSingerOverlay(document, { ...overlayInfo, remainingSeconds: remaining }, overlaySettings);
+        }
+    };
+    const requestOverlayRefresh = () => {
+        void browser.runtime.sendMessage({ type: 'updateOverlayNow' }).catch(() => { /* background unavailable */ });
+    };
     const debug = (message: string, details: Record<string, unknown>) => console.debug(`[karaoke-player] ${message}`, details);
     const matching = () => session !== null && new URL(location.href).searchParams.get('v') === session.videoId;
     const report = (type: string, element: HTMLVideoElement, extra: { nearEnd?: boolean; code?: string; message?: string } = {}) => {
@@ -84,6 +106,7 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
     };
     const attach = () => {
         installTvJoinQr();
+        installSingerOverlay(document);
         const element = video();
         if (!element || element.dataset.karaokeBound) return;
         element.dataset.karaokeBound = 'true';
@@ -100,6 +123,7 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
         // observes the original watch URL. Advance just before the media boundary,
         // while the expected video and generation are still verifiable.
         element.addEventListener('timeupdate', () => {
+            renderOverlay();
             if (!retired && armed && Number.isFinite(element.duration) && element.duration > 0
                 && element.duration - element.currentTime <= .75 && !element.paused) {
                 report('ended', element, { nearEnd: true });
@@ -136,6 +160,9 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
             joinUrl = (value as { joinUrl: string }).joinUrl; installTvJoinQr();
         }
     }).catch(error => console.error('[karaoke-player] join QR unavailable', error));
+    // Ask the background for an immediate first overlay push (labels come from
+    // controller status, so the content script never needs the token itself).
+    requestOverlayRefresh();
     const channel = Math.random().toString(36).slice(2);
     const bridgeNode = document.createElement('span'); bridgeNode.hidden = true; bridgeNode.id = `karaoke-bridge-${channel}`;
     document.documentElement.appendChild(bridgeNode);
@@ -149,6 +176,14 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
         debug('content command received', { type: message.type, commandId: message.commandId, videoId: message.videoId });
         const element = video();
         if (message.type === 'inspectPlayback') return session && element && !adShowing() ? { ...session, type: element.ended ? 'ended' : element.paused ? 'paused' : 'playing', position: element.currentTime } : null;
+        if (message.type === 'updateSingerOverlay') {
+            if (!message.info || typeof message.info !== 'object' || !message.settings || typeof message.settings !== 'object') return;
+            overlayInfo = message.info as OverlayInfo;
+            overlaySettings = message.settings as OverlaySettings;
+            overlayNearEndAnnounced = false;
+            renderOverlay();
+            return;
+        }
         if (message.type === 'skip') { session = null; armed = false; retired = true; element?.pause(); return; }
         const load = parseLoadVideoCommand(message);
         if (load) {

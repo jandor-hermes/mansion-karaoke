@@ -30,9 +30,9 @@
     mod
   ));
 
-  // players/firefox-extension/node_modules/qrcode-generator/qrcode.js
+  // node_modules/qrcode-generator/qrcode.js
   var require_qrcode = __commonJS({
-    "players/firefox-extension/node_modules/qrcode-generator/qrcode.js"(exports, module) {
+    "node_modules/qrcode-generator/qrcode.js"(exports, module) {
       var qrcode2 = (function() {
         var qrcode3 = function(typeNumber, errorCorrectionLevel) {
           var PAD0 = 236;
@@ -1717,7 +1717,7 @@
     }
   });
 
-  // players/firefox-extension/src/join-qr.ts
+  // src/join-qr.ts
   var import_qrcode_generator = __toESM(require_qrcode(), 1);
   var JOIN_QR_ID = "karaoke-join-qr";
   function createJoinQrDataUrl(joinUrl) {
@@ -1750,7 +1750,7 @@
     return host;
   }
 
-  // players/firefox-extension/src/display.ts
+  // src/display.ts
   async function installDisplay() {
     const status = document.getElementById("display-status");
     try {

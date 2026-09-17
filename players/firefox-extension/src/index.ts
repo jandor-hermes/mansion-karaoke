@@ -111,7 +111,8 @@ export function createControllerClient(options: { baseUrl: string; token: string
             if (typeof value?.instanceId !== 'string' || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !value.playback || typeof value.playback.volume !== 'number') throw new Error('Malformed controller status');
             const activeCommand = value.activeCommand === null ? null : playbackCommandSchema.parse(value.activeCommand);
             if (activeCommand && activeCommand.type !== 'play') throw new Error('Malformed active command');
-            return { instanceId: value.instanceId as string, sequence: value.sequence as number, activeCommand, desiredPaused: value.desiredPaused === true, volume: value.playback.volume as number };
+            return { instanceId: value.instanceId as string, sequence: value.sequence as number, activeCommand, desiredPaused: value.desiredPaused === true, volume: value.playback.volume as number,
+                current: value.current ?? null, queue: Array.isArray(value.queue) ? value.queue : [], playbackState: typeof value.playback?.state === 'string' ? value.playback.state : 'idle' };
         },
         async poll(after: number) {
             const response = await request(`/command?after=${after}`);

@@ -1,7 +1,8 @@
 /* global browser */
 import { CommandRouter, createControllerClient, createInitialPlayerState, type BrowserWindows, type PlayerState } from './index';
 import { enrichContentEvent, type ContentEvent } from './events';
-import { parseStoredConfig, type ExtensionConfig } from './config';
+import { parseStoredConfig, type ExtensionConfig, type OverlaySettings } from './config';
+import { singerLabel, type OverlayInfo } from './singer-overlay';
 import type { PlaybackEvent } from '../../../packages/playback-protocol/src';
 
 export async function startBackground(browserApi: typeof browser, options?: ExtensionConfig) {
@@ -11,6 +12,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     const stored = await browserApi.storage.local.get(['baseUrl', 'token', 'playerTabId']) as Record<string, unknown>;
     const log = (...args: unknown[]) => console.info('[karaoke-player]', ...args);
     let activeConfig = options ?? parseStoredConfig(stored);
+    let overlaySettings: OverlaySettings = activeConfig.overlay;
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0, instanceId = '', eventSequence = Date.now();
     let needsReconcile = true;
@@ -48,6 +50,22 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
             log('focus', { tabId: state.tabId, windowId: state.windowId });
         }
     };
+    /** Last overlay info sent to the player tab, to avoid redundant messages. */
+    let lastOverlayKey = '';
+    const pushOverlay = async (info: OverlayInfo) => {
+        const key = JSON.stringify([info, overlaySettings]);
+        if (key === lastOverlayKey || state.tabId === null) return;
+        lastOverlayKey = key;
+        try { await browserApi.tabs.sendMessage(state.tabId, { type: 'updateSingerOverlay', info, settings: overlaySettings }); }
+        catch { lastOverlayKey = ''; /* tab reloading; retry on next poll */ }
+    };
+    /** Derive overlay labels from a controller status snapshot. */
+    const overlayInfoFromStatus = (snapshot: { current?: { title?: string; requestedBy?: string } | null; queue?: Array<{ title?: string; requestedBy?: string }>; playbackState?: string }): OverlayInfo => ({
+        current: snapshot.current ?? null,
+        next: snapshot.queue?.[0] ?? null,
+        playing: snapshot.playbackState === 'playing' || snapshot.playbackState === 'loading',
+        remainingSeconds: null,
+    });
     const publish = async (event: PlaybackEvent) => {
         const target = client;
         if (!target) return;
@@ -106,6 +124,10 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
                 await apply(result.command);
                 commandCursor = result.sequence;
             } else commandCursor = Math.max(commandCursor, result.sequence);
+            if (client) {
+                try { await pushOverlay(overlayInfoFromStatus(await client.status())); }
+                catch (error) { console.error('[karaoke-player] overlay status fetch failed', error); }
+            }
             await browserApi.storage.local.set({ commandCursor, controllerInstanceId: instanceId });
         } catch (error) { console.error('[karaoke-player] controller poll failed', error); }
     };
@@ -121,7 +143,8 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         stop();
         activeConfig = config;
         client = config.token ? createControllerClient(config) : null;
-        if (changed) { commandCursor = 0; needsReconcile = true; pending.clear(); instanceId = ''; }
+        if (changed) { commandCursor = 0; needsReconcile = true; pending.clear(); instanceId = ''; lastOverlayKey = ''; }
+        overlaySettings = config.overlay;
         surfaceReady = (pollInFlight ?? Promise.resolve()).then(() => ensurePlayerSurface());
         if (client) { timer = setInterval(() => void poll(), 750); void poll(); }
         return surfaceReady;
@@ -146,11 +169,22 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         if (sender?.tab?.id !== state.tabId || sender?.frameId !== 0) return;
         const event = enrichContentEvent(message, state, eventSequence, Date.now());
         if (event) { eventSequence = event.sequence; state.status = event.type === 'ready' ? 'loading' : event.type; await publish(event); }
+        if (message.type === 'updateOverlayNow') {
+            // Content script asks for an immediate overlay refresh (e.g. near-end visibility).
+            lastOverlayKey = '';
+            if (state.tabId !== null && sender?.tab?.id === state.tabId) {
+                try { const snapshot = await client.status(); await pushOverlay(overlayInfoFromStatus(snapshot)); } catch { /* next poll recovers */ }
+            }
+        }
     });
     browserApi.storage.onChanged?.addListener((changes: Record<string, { newValue?: unknown }>) => {
-        if ('baseUrl' in changes || 'token' in changes) void browserApi.storage.local.get(['baseUrl', 'token']).then(value => {
+        if ('baseUrl' in changes || 'token' in changes || 'overlay' in changes) void browserApi.storage.local.get(['baseUrl', 'token', 'overlay']).then(value => {
             const config = parseStoredConfig(value);
             if (config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token) configure(config);
+            else if (JSON.stringify(config.overlay) !== JSON.stringify(overlaySettings)) {
+                overlaySettings = config.overlay; lastOverlayKey = '';
+                void poll();
+            }
         });
     });
     browserApi.tabs.onRemoved.addListener(id => { if (id === state.tabId) { state.tabId = null; needsReconcile = true; surfaceReady = ensurePlayerSurface(); } });

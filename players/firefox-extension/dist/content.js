@@ -34,9 +34,9 @@
     mod
   ));
 
-  // players/firefox-extension/node_modules/qrcode-generator/qrcode.js
+  // node_modules/qrcode-generator/qrcode.js
   var require_qrcode = __commonJS({
-    "players/firefox-extension/node_modules/qrcode-generator/qrcode.js"(exports, module) {
+    "node_modules/qrcode-generator/qrcode.js"(exports, module) {
       var qrcode2 = (function() {
         var qrcode3 = function(typeNumber, errorCorrectionLevel) {
           var PAD0 = 236;
@@ -1721,7 +1721,7 @@
     }
   });
 
-  // players/firefox-extension/src/presentation.ts
+  // src/presentation.ts
   var PRESENTATION_CLASS = "karaoke-video-presentation";
   var PRESENTATION_STYLE_ID = "karaoke-video-presentation-style";
   var YOUTUBE_FULLSCREEN_BUTTON_SELECTOR = 'button.ytp-fullscreen-button[aria-label*="Full screen"]';
@@ -1838,7 +1838,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     });
   }
 
-  // players/firefox-extension/src/load-video.ts
+  // src/load-video.ts
   var YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
   function parseLoadVideoCommand(value) {
     if (!value || typeof value !== "object") return null;
@@ -1897,7 +1897,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     };
   }
 
-  // players/firefox-extension/src/join-qr.ts
+  // src/join-qr.ts
   var import_qrcode_generator = __toESM(require_qrcode(), 1);
   var JOIN_QR_ID = "karaoke-join-qr";
   function createJoinQrDataUrl(joinUrl) {
@@ -1930,7 +1930,73 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     return host;
   }
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
+  // src/singer-overlay.ts
+  var SINGER_OVERLAY_ID = "karaoke-singer-overlay";
+  function singerLabel(item) {
+    if (!item) return "";
+    if (item.requestedBy && item.title) return `${item.requestedBy} \u2014 ${item.title}`;
+    return item.requestedBy || item.title || "";
+  }
+  function upNextVisible(info, settings) {
+    if (!info.next || !singerLabel(info.next)) return false;
+    if (settings.upNextAlways) return true;
+    if (!settings.upNextSeconds) return false;
+    if (!info.playing || info.remainingSeconds === null) return false;
+    return info.remainingSeconds <= settings.upNextSeconds;
+  }
+  function ensureHost(documentLike) {
+    let host = documentLike.getElementById(SINGER_OVERLAY_ID);
+    if (host) return host;
+    host = documentLike.createElement("div");
+    host.id = SINGER_OVERLAY_ID;
+    const nowSinging = documentLike.createElement("div");
+    nowSinging.id = "karaoke-now-singing";
+    const upNext = documentLike.createElement("div");
+    upNext.id = "karaoke-up-next";
+    if (typeof host.appendChild !== "function") return host;
+    host.appendChild(nowSinging);
+    host.appendChild(upNext);
+    return host;
+  }
+  function applyStyle(element, cssText) {
+    if (element.style) element.style.cssText = cssText;
+  }
+  function installSingerOverlay(documentLike) {
+    const parent = documentLike.querySelector(".html5-video-player") ?? documentLike.body;
+    if (!parent || typeof parent.appendChild !== "function") return null;
+    const host = ensureHost(documentLike);
+    if (host.parentElement !== parent) parent.appendChild(host);
+    return host;
+  }
+  function updateSingerOverlay(documentLike, info, settings) {
+    const host = installSingerOverlay(documentLike);
+    if (!host) return null;
+    const nowSinging = host.querySelector("#karaoke-now-singing");
+    const upNext = host.querySelector("#karaoke-up-next");
+    if (!nowSinging || !upNext) return host;
+    applyStyle(host, "position:absolute;left:18px;bottom:64px;z-index:2147483647;display:flex;flex-direction:column;gap:8px;pointer-events:none;");
+    applyStyle(nowSinging, "display:none;max-width:44vw;padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font:700 15px/1.3 -apple-system,system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(4px);");
+    applyStyle(upNext, "display:none;max-width:44vw;padding:7px 13px;border-radius:999px;background:rgba(0,0,0,.5);color:rgba(255,255,255,.92);font:600 13px/1.3 -apple-system,system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(4px);");
+    const currentLabel = settings.nowSinging && info.playing ? singerLabel(info.current) : "";
+    if (currentLabel) {
+      nowSinging.textContent = `\u{1F3A4} ${currentLabel}`;
+      nowSinging.style.display = "block";
+    } else nowSinging.style.display = "none";
+    const nextLabel = upNextVisible(info, settings) ? singerLabel(info.next) : "";
+    if (nextLabel) {
+      upNext.textContent = `Up next: ${nextLabel}`;
+      upNext.style.display = "block";
+    } else upNext.style.display = "none";
+    return host;
+  }
+  function hideSingerOverlay(documentLike) {
+    documentLike.getElementById(SINGER_OVERLAY_ID)?.style.setProperty("display", "none");
+  }
+  function showSingerOverlay(documentLike) {
+    documentLike.getElementById(SINGER_OVERLAY_ID)?.style.removeProperty("display");
+  }
+
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/external.js
   var external_exports = {};
   __export(external_exports, {
     BRAND: () => BRAND,
@@ -2042,7 +2108,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     void: () => voidType
   });
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/util.js
   var util;
   (function(util2) {
     util2.assertEqual = (_) => {
@@ -2176,7 +2242,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     }
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/ZodError.js
   var ZodIssueCode = util.arrayToEnum([
     "invalid_type",
     "invalid_literal",
@@ -2294,7 +2360,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     return error;
   };
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/locales/en.js
   var errorMap = (issue, _ctx) => {
     let message;
     switch (issue.code) {
@@ -2397,7 +2463,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
   };
   var en_default = errorMap;
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/errors.js
   var overrideErrorMap = en_default;
   function setErrorMap(map) {
     overrideErrorMap = map;
@@ -2406,7 +2472,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     return overrideErrorMap;
   }
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
   var makeIssue = (params) => {
     const { data, path, errorMaps, issueData } = params;
     const fullPath = [...path, ...issueData.path || []];
@@ -2516,14 +2582,14 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
   var isValid = (x) => x.status === "valid";
   var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
   var errorUtil;
   (function(errorUtil2) {
     errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
     errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
   })(errorUtil || (errorUtil = {}));
 
-  // node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
+  // ../../node_modules/.bun/zod@3.25.76/node_modules/zod/v3/types.js
   var ParseInputLazyPath = class {
     constructor(parent, value, path, key) {
       this._cachedPath = [];
@@ -5971,7 +6037,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
   };
   var NEVER = INVALID;
 
-  // packages/playback-protocol/src/index.ts
+  // ../../packages/playback-protocol/src/index.ts
   var nonEmptyString = external_exports.string().min(1).refine((value) => value === value.trim(), "must be canonical");
   var itemIdSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
   var videoIdSchema = external_exports.string().regex(/^[A-Za-z0-9_-]{11}$/);
@@ -6024,7 +6090,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     })
   ]);
 
-  // players/firefox-extension/src/content.ts
+  // src/content.ts
   var video = () => document.querySelector("video");
   function classifyYouTubeError(documentLike, element) {
     const mediaCode = element.error?.code;
@@ -6067,6 +6133,26 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     let playRetry;
     const MAX_PLAY_ATTEMPTS = 4;
     const adShowing = () => !!document.querySelector(".ad-showing, .ad-interrupting");
+    let overlaySettings = null;
+    let overlayInfo = { current: null, next: null, playing: false, remainingSeconds: null };
+    let overlayNearEndAnnounced = false;
+    const renderOverlay = () => {
+      const element = video();
+      if (!element) return;
+      if (adShowing()) {
+        hideSingerOverlay(document);
+        return;
+      }
+      showSingerOverlay(document);
+      if (overlaySettings) {
+        const remaining = Number.isFinite(element.duration) && element.duration > 0 && !element.paused ? Math.max(0, element.duration - element.currentTime) : null;
+        updateSingerOverlay(document, { ...overlayInfo, remainingSeconds: remaining }, overlaySettings);
+      }
+    };
+    const requestOverlayRefresh = () => {
+      void browser.runtime.sendMessage({ type: "updateOverlayNow" }).catch(() => {
+      });
+    };
     const debug = (message, details) => console.debug(`[karaoke-player] ${message}`, details);
     const matching = () => session !== null && new URL(location.href).searchParams.get("v") === session.videoId;
     const report = (type, element, extra = {}) => {
@@ -6130,6 +6216,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     };
     const attach = () => {
       installTvJoinQr();
+      installSingerOverlay(document);
       const element = video();
       if (!element || element.dataset.karaokeBound) return;
       element.dataset.karaokeBound = "true";
@@ -6149,6 +6236,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
         });
       }
       element.addEventListener("timeupdate", () => {
+        renderOverlay();
         if (!retired && armed && Number.isFinite(element.duration) && element.duration > 0 && element.duration - element.currentTime <= 0.75 && !element.paused) {
           report("ended", element, { nearEnd: true });
           if (retired) element.pause();
@@ -6183,6 +6271,7 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
         installTvJoinQr();
       }
     }).catch((error) => console.error("[karaoke-player] join QR unavailable", error));
+    requestOverlayRefresh();
     const channel = Math.random().toString(36).slice(2);
     const bridgeNode = document.createElement("span");
     bridgeNode.hidden = true;
@@ -6200,6 +6289,14 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
       debug("content command received", { type: message.type, commandId: message.commandId, videoId: message.videoId });
       const element = video();
       if (message.type === "inspectPlayback") return session && element && !adShowing() ? { ...session, type: element.ended ? "ended" : element.paused ? "paused" : "playing", position: element.currentTime } : null;
+      if (message.type === "updateSingerOverlay") {
+        if (!message.info || typeof message.info !== "object" || !message.settings || typeof message.settings !== "object") return;
+        overlayInfo = message.info;
+        overlaySettings = message.settings;
+        overlayNearEndAnnounced = false;
+        renderOverlay();
+        return;
+      }
       if (message.type === "skip") {
         session = null;
         armed = false;
