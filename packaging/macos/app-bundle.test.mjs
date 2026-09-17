@@ -180,6 +180,6 @@ test('launcher readiness self-test exposes a bounded request budget', () => {
   const report = JSON.parse(result.stdout);
   assert.equal(report.requestTimeoutWithinBudget, true);
   assert.equal(report.deadlineExhausted, true);
-  assert.match(readFileSync(path.join(buildCwd, 'Launcher.swift'), 'utf8'), /failControllerStartup[\\s\\S]*controller\?\.terminate\(\)/);
+  assert.match(readFileSync(path.join(buildCwd, 'Launcher.swift'), 'utf8'), /failControllerStartup[\s\S]*controller\?\.terminate\(\)/);
   assert.equal(report.portConflictMessage, 'Port 4321 is already in use.');
 });
