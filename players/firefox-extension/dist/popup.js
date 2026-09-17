@@ -36,9 +36,15 @@
     status.dataset.error = String(error);
   }
   async function load() {
-    const config = parseStoredConfig(await browser.storage.local.get(["baseUrl", "token"]));
+    const config = parseStoredConfig(await browser.storage.local.get(["baseUrl", "token", "overlay"]));
     if (baseUrl) baseUrl.value = config.baseUrl;
     if (token) token.value = config.token;
+    const nowSinging = document.querySelector("#overlay-now-singing");
+    const upNextAlways = document.querySelector("#overlay-up-next-always");
+    const upNextSeconds = document.querySelector("#overlay-up-next-seconds");
+    if (nowSinging) nowSinging.checked = config.overlay.nowSinging;
+    if (upNextAlways) upNextAlways.checked = config.overlay.upNextAlways;
+    if (upNextSeconds) upNextSeconds.value = String(config.overlay.upNextSeconds);
   }
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -46,7 +52,12 @@
     const submitter = event.submitter;
     const config = {
       baseUrl: baseUrl.value.trim() || DEFAULT_CONTROLLER_URL,
-      token: token.value
+      token: token.value,
+      overlay: parseOverlaySettings({
+        nowSinging: document.querySelector("#overlay-now-singing")?.checked,
+        upNextAlways: document.querySelector("#overlay-up-next-always")?.checked,
+        upNextSeconds: Number(document.querySelector("#overlay-up-next-seconds")?.value)
+      })
     };
     if (submitter?.value !== "start") {
       await browser.storage.local.set(config);

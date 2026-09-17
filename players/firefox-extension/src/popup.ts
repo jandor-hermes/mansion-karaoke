@@ -1,5 +1,5 @@
 /* global browser */
-import { DEFAULT_CONTROLLER_URL, parseStoredConfig } from './config';
+import { DEFAULT_CONTROLLER_URL, parseOverlaySettings, parseStoredConfig } from './config';
 
 type StartResult = { ok?: boolean; tabId?: number | null; error?: string } | undefined;
 
@@ -15,9 +15,15 @@ function setStatus(message: string, error = false) {
 }
 
 async function load() {
-    const config = parseStoredConfig(await browser.storage.local.get(['baseUrl', 'token']));
+    const config = parseStoredConfig(await browser.storage.local.get(['baseUrl', 'token', 'overlay']));
     if (baseUrl) baseUrl.value = config.baseUrl;
     if (token) token.value = config.token;
+    const nowSinging = document.querySelector<HTMLInputElement>('#overlay-now-singing');
+    const upNextAlways = document.querySelector<HTMLInputElement>('#overlay-up-next-always');
+    const upNextSeconds = document.querySelector<HTMLInputElement>('#overlay-up-next-seconds');
+    if (nowSinging) nowSinging.checked = config.overlay.nowSinging;
+    if (upNextAlways) upNextAlways.checked = config.overlay.upNextAlways;
+    if (upNextSeconds) upNextSeconds.value = String(config.overlay.upNextSeconds);
 }
 
 form?.addEventListener('submit', async (event) => {
@@ -27,6 +33,11 @@ form?.addEventListener('submit', async (event) => {
     const config = {
         baseUrl: baseUrl.value.trim() || DEFAULT_CONTROLLER_URL,
         token: token.value,
+        overlay: parseOverlaySettings({
+            nowSinging: document.querySelector<HTMLInputElement>('#overlay-now-singing')?.checked,
+            upNextAlways: document.querySelector<HTMLInputElement>('#overlay-up-next-always')?.checked,
+            upNextSeconds: Number(document.querySelector<HTMLInputElement>('#overlay-up-next-seconds')?.value),
+        }),
     };
     if (submitter?.value !== 'start') {
         await browser.storage.local.set(config);

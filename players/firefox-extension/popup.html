@@ -17,6 +17,12 @@
     <label for="token">Party token / authorization key</label>
     <input id="token" name="token" type="text" autocomplete="off" spellcheck="false">
     <div class="hint">Kept only in Firefox extension storage.</div>
+    <fieldset style="margin:14px 0 0;padding:10px 12px;border:1px solid #45454d;border-radius:8px">
+      <legend style="font-size:12px;font-weight:700;padding:0 4px">Singer overlay</legend>
+      <label style="font-weight:400;margin:8px 0 0"><input id="overlay-now-singing" type="checkbox" style="width:auto;margin-right:6px"> Show “Now singing” chip</label>
+      <label style="font-weight:400;margin:8px 0 0"><input id="overlay-up-next-always" type="checkbox" style="width:auto;margin-right:6px"> Always show “Up next”</label>
+      <label style="font-weight:400;margin:8px 0 0" for="overlay-up-next-seconds">“Up next” appears <input id="overlay-up-next-seconds" type="number" min="0" max="600" step="5" style="width:64px;display:inline-block;padding:4px 6px"> s before end (0 = off)</label>
+    </fieldset>
     <div class="actions">
       <button type="submit" value="save">Save</button>
       <button class="primary" type="submit" value="start">Save &amp; start</button>
