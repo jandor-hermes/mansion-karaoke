@@ -39,6 +39,13 @@ test('build produces a branded macOS application bundle', () => {
   assert.equal(plist.status, 0, plist.stderr);
   assert.equal(plist.stdout.trim(), 'Mansion Karaoke');
 
+  const iconName = spawnSync('/usr/bin/plutil', ['-extract', 'CFBundleIconName', 'raw', '-o', '-', path.join(app, 'Contents', 'Info.plist')], {
+    encoding: 'utf8',
+  });
+  assert.equal(iconName.status, 0, iconName.stderr);
+  assert.equal(iconName.stdout.trim(), 'AppIcon');
+  assert.equal(statSync(path.join(app, 'Contents', 'Resources', 'AppIcon.icns')).size > 0, true);
+
   const manifest = JSON.parse(readFileSync(extensionManifest, 'utf8'));
   assert.equal(manifest.name, 'Mansion Karaoke Firefox Player');
 

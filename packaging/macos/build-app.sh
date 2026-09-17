@@ -67,6 +67,8 @@ mkdir -p "$MACOS" "$RESOURCES"
 cp "$ROOT/packaging/macos/Info.plist" "$CONTENTS/Info.plist"
 
 cd "$ROOT"
+swift "$ROOT/packaging/macos/generate-icon.swift"
+iconutil --convert icns --output "$RESOURCES/AppIcon.icns" "$ROOT/packaging/macos/AppIcon.iconset"
 bun run firefox:build
 bun run firefox:verify
 cp -R "$ROOT/players/firefox-extension/dist" "$RESOURCES/firefox-extension"

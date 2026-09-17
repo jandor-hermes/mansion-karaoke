@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="theme" x1="8%" y1="92%" x2="92%" y2="8%">
+      <stop stop-color="#3ea6ff"/><stop offset=".55" stop-color="#6b4ff2"/><stop offset="1" stop-color="#c738b8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="#090910"/>
+  <rect x="36" y="36" width="952" height="952" rx="230" fill="url(#theme)"/>
+  <text x="512" y="620" text-anchor="middle" font-family="Avenir Next, Helvetica Neue, sans-serif" font-size="390" font-weight="700" fill="white">MK</text>
+</svg>
