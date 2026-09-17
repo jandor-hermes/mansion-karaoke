@@ -299,8 +299,12 @@ export function createControlPlane(options: Options): ControlPlane {
         get url() { return url; },
         get bind() { return bind; },
         listen(port) {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 server = createServer((request, response) => void handler(request, response));
+                server.once('error', (error) => {
+                    server = undefined;
+                    reject(error);
+                });
                 server.listen(port, bind, () => {
                     const address = server?.address();
                     const actual = typeof address === 'object' && address ? address.port : port;

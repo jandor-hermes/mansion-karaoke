@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
+import { createServer } from 'node:net';
 import { createControlPlane, type ControlPlane } from '../src/index.js';
 let plane: ControlPlane;
 afterEach(async () => { await plane?.close(); });
@@ -6,6 +7,15 @@ async function setup(options: { now?: () => number } = {}) {
  plane = createControlPlane({ token: 't', roomId: 'r', ...options }); await plane.listen(0);
  return async (path: string, body?: unknown) => fetch(plane.url + path, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
+it('rejects listen when the requested port is occupied', async () => {
+ const blocker = createServer().listen(0, '127.0.0.1');
+ await new Promise<void>((resolve) => blocker.once('listening', resolve));
+ const address = blocker.address();
+ const port = typeof address === 'object' && address ? address.port : 0;
+ plane = createControlPlane({ token: 't', roomId: 'r', bind: '127.0.0.1' });
+ await expect(plane.listen(port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+ await new Promise<void>((resolve, reject) => blocker.close((error) => error ? reject(error) : resolve()));
+});
 it('rejects noncanonical IDs atomically on every insertion route', async () => {
  const req = await setup();
  for (const path of ['/queue', '/queue/next', '/queue/play-now']) for (const item of [{ itemId: ' x', videoId: 'dQw4w9WgXcQ' }, { itemId: 'x', videoId: 'invalid' }, { itemId: ' ', videoId: 'dQw4w9WgXcQ' }]) expect((await req(path, item)).status).toBe(400);
