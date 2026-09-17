@@ -27,14 +27,32 @@ export function parseOverlaySettings(value: unknown): OverlaySettings {
     };
 }
 
-export type ExtensionConfig = { baseUrl: string; token: string; overlay: OverlaySettings };
+export type ExperimentSettings = {
+    /** Experimental: let the host control presentation instead of auto-theater
+     * + window fullscreen on every play command. Off by default. */
+    hostControlsFullscreen: boolean;
+};
+
+export const DEFAULT_EXPERIMENT_SETTINGS: ExperimentSettings = { hostControlsFullscreen: false };
+
+export function parseExperimentSettings(value: unknown): ExperimentSettings {
+    if (!value || typeof value !== 'object') return { ...DEFAULT_EXPERIMENT_SETTINGS };
+    const stored = value as { hostControlsFullscreen?: unknown };
+    return {
+        hostControlsFullscreen: typeof stored.hostControlsFullscreen === 'boolean'
+            ? stored.hostControlsFullscreen : DEFAULT_EXPERIMENT_SETTINGS.hostControlsFullscreen,
+    };
+}
+
+export type ExtensionConfig = { baseUrl: string; token: string; overlay: OverlaySettings; experiments: ExperimentSettings };
 
 export function parseStoredConfig(value: unknown): ExtensionConfig {
-    if (!value || typeof value !== 'object') return { baseUrl: DEFAULT_CONTROLLER_URL, token: '', overlay: { ...DEFAULT_OVERLAY_SETTINGS } };
-    const stored = value as { baseUrl?: unknown; token?: unknown; overlay?: unknown };
+    if (!value || typeof value !== 'object') return { baseUrl: DEFAULT_CONTROLLER_URL, token: '', overlay: { ...DEFAULT_OVERLAY_SETTINGS }, experiments: { ...DEFAULT_EXPERIMENT_SETTINGS } };
+    const stored = value as { baseUrl?: unknown; token?: unknown; overlay?: unknown; experiments?: unknown };
     return {
         baseUrl: typeof stored.baseUrl === 'string' ? stored.baseUrl : DEFAULT_CONTROLLER_URL,
         token: typeof stored.token === 'string' ? stored.token : '',
         overlay: parseOverlaySettings(stored.overlay),
+        experiments: parseExperimentSettings(stored.experiments),
     };
 }

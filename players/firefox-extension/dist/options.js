@@ -15,13 +15,22 @@
       upNextAlways: typeof stored.upNextAlways === "boolean" ? stored.upNextAlways : DEFAULT_OVERLAY_SETTINGS.upNextAlways
     };
   }
+  var DEFAULT_EXPERIMENT_SETTINGS = { hostControlsFullscreen: false };
+  function parseExperimentSettings(value) {
+    if (!value || typeof value !== "object") return { ...DEFAULT_EXPERIMENT_SETTINGS };
+    const stored = value;
+    return {
+      hostControlsFullscreen: typeof stored.hostControlsFullscreen === "boolean" ? stored.hostControlsFullscreen : DEFAULT_EXPERIMENT_SETTINGS.hostControlsFullscreen
+    };
+  }
   function parseStoredConfig(value) {
-    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "", overlay: { ...DEFAULT_OVERLAY_SETTINGS } };
+    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "", overlay: { ...DEFAULT_OVERLAY_SETTINGS }, experiments: { ...DEFAULT_EXPERIMENT_SETTINGS } };
     const stored = value;
     return {
       baseUrl: typeof stored.baseUrl === "string" ? stored.baseUrl : DEFAULT_CONTROLLER_URL,
       token: typeof stored.token === "string" ? stored.token : "",
-      overlay: parseOverlaySettings(stored.overlay)
+      overlay: parseOverlaySettings(stored.overlay),
+      experiments: parseExperimentSettings(stored.experiments)
     };
   }
 
@@ -40,6 +49,8 @@
     if (nowSinging) nowSinging.checked = config.overlay.nowSinging;
     if (upNextAlways) upNextAlways.checked = config.overlay.upNextAlways;
     if (upNextSeconds) upNextSeconds.value = String(config.overlay.upNextSeconds);
+    const hostFullscreen = document.querySelector("#exp-host-fullscreen");
+    if (hostFullscreen) hostFullscreen.checked = config.experiments.hostControlsFullscreen;
   }
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -51,7 +62,10 @@
         nowSinging: nowSinging?.checked,
         upNextAlways: upNextAlways?.checked,
         upNextSeconds: upNextSeconds ? Number(upNextSeconds.value) : void 0
-      })
+      }),
+      experiments: {
+        hostControlsFullscreen: document.querySelector("#exp-host-fullscreen")?.checked === true
+      }
     });
     status.textContent = "Saved. The player overlay updates on the next poll (within a second).";
   });

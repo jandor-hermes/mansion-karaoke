@@ -8,10 +8,11 @@ import type { PlaybackEvent } from '../../../packages/playback-protocol/src';
 export async function startBackground(browserApi: typeof browser, options?: ExtensionConfig) {
     const state: PlayerState = createInitialPlayerState();
     const windows = (browserApi as unknown as { windows?: BrowserWindows & { update(id: number, options: { state: 'fullscreen' } | { focused: boolean }): Promise<unknown> } }).windows;
-    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), windows);
     const stored = await browserApi.storage.local.get(['baseUrl', 'token', 'playerTabId']) as Record<string, unknown>;
     const log = (...args: unknown[]) => console.info('[karaoke-player]', ...args);
     let activeConfig = options ?? parseStoredConfig(stored);
+    let router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), windows,
+        8000, activeConfig.experiments.hostControlsFullscreen);
     let overlaySettings: OverlaySettings = activeConfig.overlay;
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0, instanceId = '', eventSequence = Date.now();
@@ -143,6 +144,8 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         stop();
         activeConfig = config;
         client = config.token ? createControllerClient(config) : null;
+        router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), windows,
+            8000, config.experiments.hostControlsFullscreen);
         if (changed) { commandCursor = 0; needsReconcile = true; pending.clear(); instanceId = ''; lastOverlayKey = ''; }
         overlaySettings = config.overlay;
         surfaceReady = (pollInFlight ?? Promise.resolve()).then(() => ensurePlayerSurface());

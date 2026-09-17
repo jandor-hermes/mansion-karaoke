@@ -4123,11 +4123,12 @@
   var createInitialPlayerState = () => ({ tabId: null, windowId: null, status: "idle", volume: 0.75 });
   var debug = (...args) => console.debug("[karaoke-player]", ...args);
   var CommandRouter = class {
-    constructor(tabs, sendMessage = async () => void 0, windows, loadTimeoutMs = 8e3) {
+    constructor(tabs, sendMessage = async () => void 0, windows, loadTimeoutMs = 8e3, hostControlsPresentation = false) {
       this.tabs = tabs;
       this.sendMessage = sendMessage;
       this.windows = windows;
       this.loadTimeoutMs = loadTimeoutMs;
+      this.hostControlsPresentation = hostControlsPresentation;
     }
     async sendLoadVideo(tabId, message) {
       let timeout;
@@ -4144,8 +4145,8 @@
       debug("command received", { type: command.type, commandId: command.commandId });
       if (command.type === "play") {
         const identity = { commandId: command.commandId, itemId: command.itemId, videoId: command.videoId, roomId: command.roomId };
-        Object.assign(state, identity, { status: "loading", presentation: true });
-        const presentation = true;
+        const presentation = !this.hostControlsPresentation;
+        Object.assign(state, identity, { status: "loading", presentation: state.presentation || presentation });
         const volume = state.volume ?? 0.75;
         const paused = state.desiredPaused ?? false;
         const bootstrap = { ...command, presentation, volume, paused };
@@ -4163,7 +4164,7 @@
           state.tabId = tab.id ?? null;
           state.windowId = tab.windowId ?? null;
           debug("play navigation created", { commandId: command.commandId, tabId: state.tabId, windowId: state.windowId });
-          if (state.windowId != null && this.windows) {
+          if (!this.hostControlsPresentation && state.windowId != null && this.windows) {
             try {
               await this.windows.update(state.windowId, { state: "fullscreen" });
               debug("play window presentation applied", { commandId: command.commandId, windowId: state.windowId });
@@ -4177,7 +4178,7 @@
           const result = parseLoadVideoResult(await this.sendLoadVideo(state.tabId, { type: "loadVideo", ...identity, position: command.position, presentation, volume, paused }));
           if (result?.ok && result.videoId === command.videoId) {
             debug("play applied in existing document", { commandId: command.commandId, videoId: result.videoId, mode: result.mode });
-            if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
+            if (!this.hostControlsPresentation && state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
             return;
           }
         } catch (error) {
@@ -4185,7 +4186,7 @@
         }
         await this.tabs.update(state.tabId, { url, active: true });
         debug("play full navigation applied", { commandId: command.commandId, tabId: state.tabId });
-        if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
+        if (!this.hostControlsPresentation && state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
         return;
       }
       if (command.type === "skip") {
@@ -4329,13 +4330,22 @@
       upNextAlways: typeof stored.upNextAlways === "boolean" ? stored.upNextAlways : DEFAULT_OVERLAY_SETTINGS.upNextAlways
     };
   }
+  var DEFAULT_EXPERIMENT_SETTINGS = { hostControlsFullscreen: false };
+  function parseExperimentSettings(value) {
+    if (!value || typeof value !== "object") return { ...DEFAULT_EXPERIMENT_SETTINGS };
+    const stored = value;
+    return {
+      hostControlsFullscreen: typeof stored.hostControlsFullscreen === "boolean" ? stored.hostControlsFullscreen : DEFAULT_EXPERIMENT_SETTINGS.hostControlsFullscreen
+    };
+  }
   function parseStoredConfig(value) {
-    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "", overlay: { ...DEFAULT_OVERLAY_SETTINGS } };
+    if (!value || typeof value !== "object") return { baseUrl: DEFAULT_CONTROLLER_URL, token: "", overlay: { ...DEFAULT_OVERLAY_SETTINGS }, experiments: { ...DEFAULT_EXPERIMENT_SETTINGS } };
     const stored = value;
     return {
       baseUrl: typeof stored.baseUrl === "string" ? stored.baseUrl : DEFAULT_CONTROLLER_URL,
       token: typeof stored.token === "string" ? stored.token : "",
-      overlay: parseOverlaySettings(stored.overlay)
+      overlay: parseOverlaySettings(stored.overlay),
+      experiments: parseExperimentSettings(stored.experiments)
     };
   }
 
@@ -4343,10 +4353,16 @@
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
     const windows = browserApi.windows;
-    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), windows);
     const stored = await browserApi.storage.local.get(["baseUrl", "token", "playerTabId"]);
     const log = (...args) => console.info("[karaoke-player]", ...args);
     let activeConfig = options ?? parseStoredConfig(stored);
+    let router = new CommandRouter(
+      browserApi.tabs,
+      (id, message) => browserApi.tabs.sendMessage(id, message),
+      windows,
+      8e3,
+      activeConfig.experiments.hostControlsFullscreen
+    );
     let overlaySettings = activeConfig.overlay;
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0, instanceId = "", eventSequence = Date.now();
@@ -4505,6 +4521,13 @@
       stop();
       activeConfig = config;
       client = config.token ? createControllerClient(config) : null;
+      router = new CommandRouter(
+        browserApi.tabs,
+        (id, message) => browserApi.tabs.sendMessage(id, message),
+        windows,
+        8e3,
+        config.experiments.hostControlsFullscreen
+      );
       if (changed) {
         commandCursor = 0;
         needsReconcile = true;

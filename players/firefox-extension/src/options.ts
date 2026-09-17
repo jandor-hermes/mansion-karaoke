@@ -16,6 +16,8 @@ async function load() {
     if (nowSinging) nowSinging.checked = config.overlay.nowSinging;
     if (upNextAlways) upNextAlways.checked = config.overlay.upNextAlways;
     if (upNextSeconds) upNextSeconds.value = String(config.overlay.upNextSeconds);
+    const hostFullscreen = document.querySelector<HTMLInputElement>('#exp-host-fullscreen');
+    if (hostFullscreen) hostFullscreen.checked = config.experiments.hostControlsFullscreen;
 }
 
 form?.addEventListener('submit', async (event) => {
@@ -29,6 +31,9 @@ form?.addEventListener('submit', async (event) => {
             upNextAlways: upNextAlways?.checked,
             upNextSeconds: upNextSeconds ? Number(upNextSeconds.value) : undefined,
         }),
+        experiments: {
+            hostControlsFullscreen: document.querySelector<HTMLInputElement>('#exp-host-fullscreen')?.checked === true,
+        },
     });
     status.textContent = 'Saved. The player overlay updates on the next poll (within a second).';
 });
