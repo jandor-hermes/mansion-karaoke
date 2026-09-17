@@ -234,26 +234,21 @@ vkara/
 ├── apps/
 │   ├── web/                 frontend
 │   ├── api/                 backend
-│   ├── tizen/               shell Samsung TV (WGT + TizenBrew)
-│   └── android-tv/          shell Android TV (Expo + EAS APK sideload)
+│   └── control-plane/       Mansion host controller
 ├── packages/
 │   ├── validators/          zod WS + HTTP schemas
 │   ├── youtube/             YouTube types + utils
-│   └── room/                room / realtime server types
-├── containers/
-│   ├── aio/                 all-in-one Docker image
-│   ├── api-redis/           API + Redis bundle
-│   └── whisper-stt/         optional voice search
-└── docker-compose.yml
+│   ├── room/                room / realtime server types
+│   └── playback-protocol/   Mansion host/extension protocol
+├── players/
+│   └── firefox-extension/   Firefox playback provider
+└── packaging/
+    └── macos/               self-contained macOS host app
 ```
 
 Contract realtime nằm trong `packages/validators` (zod). Khi đổi message WS hoặc HTTP body, cập nhật validators trước.
 
-**Samsung TV:** xem [apps/tizen/README.md](../../apps/tizen/README.md). Release shell dùng tag `tizen-v*` (không dùng tag Docker `v*`).
-
-**Android TV:** xem [apps/android-tv/README.md](../../apps/android-tv/README.md). Sideload APK qua EAS; release dùng tag `android-v*` (không Play Store trong giai đoạn này; không cần Gradle local).
-
-**Scripts:** `bun run dev` · `bun run build` · `bun run build:tizen` · `bun run build:android-tv` · `bun run format`
+**Scripts:** `bun run dev` · `bun run build` · `bun run format`
 
 **Docs:** [Monorepo architecture](../monorepo-architecture.md) bằng tiếng Anh.
 

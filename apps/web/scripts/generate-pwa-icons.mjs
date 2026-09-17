@@ -213,9 +213,7 @@ await writeFile(
 );
 
 const copies = [
-    [join(OUT_DIR, 'icon-512.png'), join(repoRoot, 'apps/tizen/src/icon.png')],
-    [join(OUT_DIR, 'icon-512.png'), join(repoRoot, 'apps/android-tv/assets/icon.png')],
-    [join(OUT_DIR, 'tv-banner-320x180.png'), join(repoRoot, 'apps/android-tv/assets/tv-banner.png')],
+    // No Tizen/Android TV shells: icon is output to OUT_DIR only.
 ];
 for (const [from, to] of copies) {
     await copyFile(from, to);
@@ -223,4 +221,3 @@ for (const [from, to] of copies) {
 
 console.log(`VKara assets from brand masters → ${OUT_DIR}/`);
 console.log(`OG ${OG_OUT}`);
-console.log('Synced Tizen icon + Android TV icon/banner');

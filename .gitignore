@@ -8,7 +8,4 @@ node_modules
 # Local release packaging output
 /dist/
 
-# Tizen packaging output
-apps/tizen/dist/
-
 apps/control-plane/dist/
