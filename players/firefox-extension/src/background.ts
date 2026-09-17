@@ -6,8 +6,10 @@ import type { PlaybackEvent } from '../../../packages/playback-protocol/src';
 
 export async function startBackground(browserApi: typeof browser, options?: ExtensionConfig) {
     const state: PlayerState = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), (browserApi as unknown as { windows?: BrowserWindows }).windows);
+    const windows = (browserApi as unknown as { windows?: BrowserWindows & { update(id: number, options: { state: 'fullscreen' } | { focused: boolean }): Promise<unknown> } }).windows;
+    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), windows);
     const stored = await browserApi.storage.local.get(['baseUrl', 'token', 'playerTabId']) as Record<string, unknown>;
+    const log = (...args: unknown[]) => console.info('[karaoke-player]', ...args);
     let activeConfig = options ?? parseStoredConfig(stored);
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0, instanceId = '', eventSequence = Date.now();
@@ -20,7 +22,16 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     const ensurePlayerSurface = async (activate = false) => {
         if (!client) return;
         if (state.tabId !== null) {
-            try { await browserApi.tabs.get(state.tabId); if (activate) await browserApi.tabs.update(state.tabId, { active: true }); return; }
+            try {
+                const tab = await browserApi.tabs.get(state.tabId);
+                if (tab.windowId !== undefined) state.windowId = tab.windowId;
+                if (activate) {
+                    await browserApi.tabs.update(state.tabId, { active: true });
+                    if (state.windowId != null && windows) await windows.update(state.windowId, { focused: true });
+                    log('focus', { tabId: state.tabId, windowId: state.windowId });
+                }
+                return;
+            }
             catch { state.tabId = null; }
         }
         if (typeof browserApi.tabs.query !== 'function' || typeof browserApi.runtime.getURL !== 'function') return;
@@ -31,7 +42,11 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         const tab = existing ?? await browserApi.tabs.create({ url: displayUrl, active: true });
         state.tabId = tab.id ?? null; state.windowId = tab.windowId ?? null;
         await browserApi.storage.local.set({ playerTabId: state.tabId });
-        if (activate && existing && state.tabId !== null) await browserApi.tabs.update(state.tabId, { active: true });
+        if (activate && existing && state.tabId !== null) {
+            await browserApi.tabs.update(state.tabId, { active: true });
+            if (state.windowId != null && windows) await windows.update(state.windowId, { focused: true });
+            log('focus', { tabId: state.tabId, windowId: state.windowId });
+        }
     };
     const publish = async (event: PlaybackEvent) => {
         const target = client;
@@ -54,6 +69,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     };
     const reconcile = async () => {
         if (!client) return;
+        log('poll', { reason: 'reconcile', after: commandCursor });
         const snapshot = await client.status();
         if (instanceId && instanceId !== snapshot.instanceId) pending.clear();
         instanceId = snapshot.instanceId;
@@ -85,6 +101,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
             const result = await client.poll(commandCursor);
             if (result.instanceId !== instanceId) await reconcile();
             else if (result.command) {
+                log('poll', { reason: 'command', sequence: result.sequence, type: result.command.type });
                 if (result.command.type === 'play') state.desiredPaused = false;
                 await apply(result.command);
                 commandCursor = result.sequence;
@@ -99,25 +116,30 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
     };
     const stop = () => { if (timer !== null) clearInterval(timer); timer = null; };
     const configure = (config: ExtensionConfig) => {
-        stop();
         const changed = config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token;
+        if (!changed) return surfaceReady;
+        stop();
         activeConfig = config;
         client = config.token ? createControllerClient(config) : null;
-        if (changed) { needsReconcile = true; pending.clear(); instanceId = ''; }
+        if (changed) { commandCursor = 0; needsReconcile = true; pending.clear(); instanceId = ''; }
         surfaceReady = (pollInFlight ?? Promise.resolve()).then(() => ensurePlayerSurface());
         if (client) { timer = setInterval(() => void poll(), 750); void poll(); }
+        return surfaceReady;
     };
     browserApi.runtime.onMessage.addListener(async (raw: unknown, sender?: { tab?: { id?: number }; frameId?: number }) => {
         if (!raw || typeof raw !== 'object') return;
         const message = raw as ContentEvent & { config?: unknown };
         if (message.type === 'startSession') {
+            log('start-session received');
             // Configuration messages originate in extension pages, never a YouTube frame.
             if (sender?.tab && message.config === undefined) return;
             const config = parseStoredConfig(message.config);
             if (!config.token) return { ok: false, error: 'Enter an authorization token first.' };
-            configure(config); await surfaceReady; await ensurePlayerSurface(true);
+            await configure(config); await ensurePlayerSurface(true);
             await browserApi.storage.local.set(config);
-            return { ok: true, tabId: state.tabId };
+            const result = { ok: true, tabId: state.tabId };
+            log('start-session result', result);
+            return result;
         }
         if (!client) return;
         if (message.type === 'getJoinInfo') return client.joinInfo();
@@ -132,7 +154,7 @@ export async function startBackground(browserApi: typeof browser, options?: Exte
         });
     });
     browserApi.tabs.onRemoved.addListener(id => { if (id === state.tabId) { state.tabId = null; needsReconcile = true; surfaceReady = ensurePlayerSurface(); } });
-    configure(activeConfig);
+    if (client) { surfaceReady = ensurePlayerSurface(); timer = setInterval(() => void poll(), 750); void poll(); }
     return { state, poll, stop, configure };
 }
 if (typeof browser !== 'undefined') void startBackground(browser);

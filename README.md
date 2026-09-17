@@ -19,7 +19,7 @@ Host requirements:
 
 1. Download the Apple Silicon or Intel ZIP from [GitHub Releases](https://github.com/jandor-hermes/mansion-karaoke/releases).
 2. Move **Mansion Karaoke.app** to Applications.
-3. Follow [Friend Setup](FRIEND_SETUP.md) for the one-time Gatekeeper override and Firefox steps.
+3. Follow [Friend Setup](FRIEND_SETUP.md) for the one-time Gatekeeper override and Firefox steps. The app exposes the temporary extension manifest at `Desktop/Mansion Karaoke Extension/manifest.json` when possible, with a Copy Manifest Path fallback.
 
 The TV/player page displays a QR code. Guest phones on the same Wi-Fi scan it to join.
 

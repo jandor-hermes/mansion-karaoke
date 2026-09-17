@@ -10,6 +10,7 @@ function browserApi(overrides: Record<string, unknown> = {}) {
         tabs: { query: vi.fn().mockResolvedValue([]), get: vi.fn(), create: vi.fn().mockResolvedValue({ id: 55, windowId: 9 }), update: vi.fn(), sendMessage: vi.fn(), onRemoved: { addListener: vi.fn() } },
         runtime: { getURL: vi.fn((path: string) => `moz-extension://test/${path}`), sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } },
         storage: { local: { get: vi.fn().mockResolvedValue(config), set: vi.fn() }, onChanged: { addListener: vi.fn() } },
+        windows: { update: vi.fn() },
         ...overrides,
     } as any;
 }
@@ -117,6 +118,45 @@ describe('background lifecycle', () => {
             expect(browser.tabs.create).toHaveBeenCalledWith({ url: 'moz-extension://test/display.html', active: true });
             background.stop();
         } finally { globalThis.fetch = originalFetch; }
+    });
+
+    it('focuses the dedicated tab and its Firefox window when Save & start reuses it', async () => {
+        const listeners: Array<(message: unknown) => unknown> = [];
+        const browser = browserApi({
+            runtime: { getURL: vi.fn((path: string) => `moz-extension://test/${path}`), sendMessage: vi.fn(), onMessage: { addListener: (listener: (message: unknown) => unknown) => listeners.push(listener) } },
+            tabs: { query: vi.fn().mockResolvedValue([{ id: 66, windowId: 10, url: 'moz-extension://test/display.html' }]), get: vi.fn().mockResolvedValue({ id: 66, windowId: 10 }), create: vi.fn(), update: vi.fn(), sendMessage: vi.fn(), onRemoved: { addListener: vi.fn() } },
+            storage: { local: { get: vi.fn().mockResolvedValue({ ...config, playerTabId: 66 }), set: vi.fn() }, onChanged: { addListener: vi.fn() } },
+        });
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn(async (url) => String(url).endsWith('/status')
+            ? response({ instanceId: 'instance-1', sequence: 0, activeCommand: null, desiredPaused: false, playback: { volume: .75 } })
+            : response({ instanceId: 'instance-1', command: null, sequence: 0 }));
+        try {
+            const background = await startBackground(browser);
+            const result = await listeners[0]({ type: 'startSession', config });
+            expect(result).toEqual({ ok: true, tabId: 66 });
+            expect(browser.tabs.update).toHaveBeenCalledWith(66, { active: true });
+            expect(browser.windows.update).toHaveBeenCalledWith(10, { focused: true });
+            background.stop();
+        } finally { globalThis.fetch = originalFetch; }
+    });
+
+    it('does not restart polling when Save & start repeats the active configuration', async () => {
+        const listeners: Array<(message: unknown) => unknown> = [];
+        const browser = browserApi({
+            runtime: { getURL: vi.fn((path: string) => `moz-extension://test/${path}`), sendMessage: vi.fn(), onMessage: { addListener: (listener: (message: unknown) => unknown) => listeners.push(listener) } },
+        });
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn(async (url) => String(url).endsWith('/status')
+            ? response({ instanceId: 'instance-1', sequence: 0, activeCommand: null, desiredPaused: false, playback: { volume: .75 } })
+            : response({ instanceId: 'instance-1', command: null, sequence: 0 }));
+        const timers = vi.spyOn(globalThis, 'setInterval');
+        try {
+            const background = await startBackground(browser);
+            await listeners[0]({ type: 'startSession', config });
+            expect(timers).toHaveBeenCalledTimes(1);
+            background.stop();
+        } finally { timers.mockRestore(); globalThis.fetch = originalFetch; }
     });
 
     it('does not create another polling timer when storage repeats the same configuration', async () => {

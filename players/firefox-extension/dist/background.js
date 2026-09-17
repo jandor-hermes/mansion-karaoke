@@ -4144,8 +4144,8 @@
       debug("command received", { type: command.type, commandId: command.commandId });
       if (command.type === "play") {
         const identity = { commandId: command.commandId, itemId: command.itemId, videoId: command.videoId, roomId: command.roomId };
-        Object.assign(state, identity, { status: "loading" });
-        const presentation = state.presentation ?? false;
+        Object.assign(state, identity, { status: "loading", presentation: true });
+        const presentation = true;
         const volume = state.volume ?? 0.75;
         const paused = state.desiredPaused ?? false;
         const bootstrap = { ...command, presentation, volume, paused };
@@ -4162,15 +4162,30 @@
           const tab = await this.tabs.create({ url, active: true });
           state.tabId = tab.id ?? null;
           state.windowId = tab.windowId ?? null;
+          debug("play navigation created", { commandId: command.commandId, tabId: state.tabId, windowId: state.windowId });
+          if (state.windowId != null && this.windows) {
+            try {
+              await this.windows.update(state.windowId, { state: "fullscreen" });
+              debug("play window presentation applied", { commandId: command.commandId, windowId: state.windowId });
+            } catch (error) {
+              console.error("[karaoke-player] Firefox window fullscreen failed", error);
+            }
+          }
           return;
         }
         try {
           const result = parseLoadVideoResult(await this.sendLoadVideo(state.tabId, { type: "loadVideo", ...identity, position: command.position, presentation, volume, paused }));
-          if (result?.ok && result.videoId === command.videoId) return;
+          if (result?.ok && result.videoId === command.videoId) {
+            debug("play applied in existing document", { commandId: command.commandId, videoId: result.videoId, mode: result.mode });
+            if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
+            return;
+          }
         } catch (error) {
           debug("same-document load failed; using full navigation", { error });
         }
         await this.tabs.update(state.tabId, { url, active: true });
+        debug("play full navigation applied", { commandId: command.commandId, tabId: state.tabId });
+        if (state.windowId != null && this.windows) await this.windows.update(state.windowId, { state: "fullscreen" });
         return;
       }
       if (command.type === "skip") {
@@ -4304,8 +4319,10 @@
   // players/firefox-extension/src/background.ts
   async function startBackground(browserApi, options) {
     const state = createInitialPlayerState();
-    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), browserApi.windows);
+    const windows = browserApi.windows;
+    const router = new CommandRouter(browserApi.tabs, (id, message) => browserApi.tabs.sendMessage(id, message), windows);
     const stored = await browserApi.storage.local.get(["baseUrl", "token", "playerTabId"]);
+    const log = (...args) => console.info("[karaoke-player]", ...args);
     let activeConfig = options ?? parseStoredConfig(stored);
     let client = activeConfig.token ? createControllerClient(activeConfig) : null;
     let commandCursor = 0, instanceId = "", eventSequence = Date.now();
@@ -4318,8 +4335,13 @@
       if (!client) return;
       if (state.tabId !== null) {
         try {
-          await browserApi.tabs.get(state.tabId);
-          if (activate) await browserApi.tabs.update(state.tabId, { active: true });
+          const tab2 = await browserApi.tabs.get(state.tabId);
+          if (tab2.windowId !== void 0) state.windowId = tab2.windowId;
+          if (activate) {
+            await browserApi.tabs.update(state.tabId, { active: true });
+            if (state.windowId != null && windows) await windows.update(state.windowId, { focused: true });
+            log("focus", { tabId: state.tabId, windowId: state.windowId });
+          }
           return;
         } catch {
           state.tabId = null;
@@ -4333,7 +4355,11 @@
       state.tabId = tab.id ?? null;
       state.windowId = tab.windowId ?? null;
       await browserApi.storage.local.set({ playerTabId: state.tabId });
-      if (activate && existing && state.tabId !== null) await browserApi.tabs.update(state.tabId, { active: true });
+      if (activate && existing && state.tabId !== null) {
+        await browserApi.tabs.update(state.tabId, { active: true });
+        if (state.windowId != null && windows) await windows.update(state.windowId, { focused: true });
+        log("focus", { tabId: state.tabId, windowId: state.windowId });
+      }
     };
     const publish = async (event) => {
       const target = client;
@@ -4364,6 +4390,7 @@
     };
     const reconcile = async () => {
       if (!client) return;
+      log("poll", { reason: "reconcile", after: commandCursor });
       const snapshot = await client.status();
       if (instanceId && instanceId !== snapshot.instanceId) pending.clear();
       instanceId = snapshot.instanceId;
@@ -4403,6 +4430,7 @@
         const result = await client.poll(commandCursor);
         if (result.instanceId !== instanceId) await reconcile();
         else if (result.command) {
+          log("poll", { reason: "command", sequence: result.sequence, type: result.command.type });
           if (result.command.type === "play") state.desiredPaused = false;
           await apply(result.command);
           commandCursor = result.sequence;
@@ -4424,11 +4452,13 @@
       timer = null;
     };
     const configure = (config) => {
-      stop();
       const changed = config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token;
+      if (!changed) return surfaceReady;
+      stop();
       activeConfig = config;
       client = config.token ? createControllerClient(config) : null;
       if (changed) {
+        commandCursor = 0;
         needsReconcile = true;
         pending.clear();
         instanceId = "";
@@ -4438,19 +4468,22 @@
         timer = setInterval(() => void poll(), 750);
         void poll();
       }
+      return surfaceReady;
     };
     browserApi.runtime.onMessage.addListener(async (raw, sender) => {
       if (!raw || typeof raw !== "object") return;
       const message = raw;
       if (message.type === "startSession") {
+        log("start-session received");
         if (sender?.tab && message.config === void 0) return;
         const config = parseStoredConfig(message.config);
         if (!config.token) return { ok: false, error: "Enter an authorization token first." };
-        configure(config);
-        await surfaceReady;
+        await configure(config);
         await ensurePlayerSurface(true);
         await browserApi.storage.local.set(config);
-        return { ok: true, tabId: state.tabId };
+        const result = { ok: true, tabId: state.tabId };
+        log("start-session result", result);
+        return result;
       }
       if (!client) return;
       if (message.type === "getJoinInfo") return client.joinInfo();
@@ -4475,7 +4508,11 @@
         surfaceReady = ensurePlayerSurface();
       }
     });
-    configure(activeConfig);
+    if (client) {
+      surfaceReady = ensurePlayerSurface();
+      timer = setInterval(() => void poll(), 750);
+      void poll();
+    }
     return { state, poll, stop, configure };
   }
   if (typeof browser !== "undefined") void startBackground(browser);

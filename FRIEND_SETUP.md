@@ -30,10 +30,10 @@ Only bypass Gatekeeper for a release you received from the project owner. Later 
 
 Keep the Mansion Karaoke window open while hosting.
 
-1. Select **Reveal Extension** in the app.
-2. Select **Firefox Setup** in the app. Firefox opens its temporary-add-on page.
-3. Select **Load Temporary Add-on…**.
-4. Choose the revealed `manifest.json` file.
+1. Select **Firefox Setup** in the app. Firefox opens its temporary-add-on page.
+2. Select **Load Temporary Add-on…**.
+3. Choose `Desktop/Mansion Karaoke Extension/manifest.json` in the file chooser. The app creates this easy-to-find path when possible.
+4. If that path is unavailable, select **Reveal Extension** or **Copy Manifest Path** in the app and choose the copied `manifest.json` path.
 5. Open the **Mansion Karaoke Firefox Player** toolbar button.
 6. Enter the **Controller URL** and **Party token** shown in the app.
 7. Select **Save & start**.

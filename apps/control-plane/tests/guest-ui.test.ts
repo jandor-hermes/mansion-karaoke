@@ -112,6 +112,24 @@ describe('guest UI page', () => {
         expect(html).toContain('viewport');                // phone-friendly
     });
 
+    it('gives mobile queue metadata a full-width row above accessible actions', async () => {
+        const plane = await start();
+        const html = await (await fetch(`${plane.url}/`)).text();
+
+        expect(html).toContain('.queued { display:grid; grid-template-columns:2rem minmax(0,1fr);');
+        expect(html).toContain('.queue-actions { grid-column:2; display:grid; grid-template-columns:repeat(4,minmax(44px,1fr));');
+        expect(html).toContain('.queue-actions button { width:100%; min-width:44px; min-height:44px;');
+        expect(html).toContain('.queued .title { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }');
+        expect(html).toContain('class="sub queue-source"');
+        expect(html).toContain('class="sub queue-requester"');
+        expect(html).toContain("item.channel,item.duration].filter(Boolean).map(esc).join(' · ')");
+        expect(html).toContain("item.requestedBy?'Requested by '+item.requestedBy:''");
+        expect(html).toContain('aria-label="Play '+"'"+'+esc(item.title||item.videoId)+'+"'"+' now"');
+        expect(html).toContain('queue-up');
+        expect(html).toContain('queue-down');
+        expect(html).toContain('queue-remove');
+    });
+
     it('still protects the API behind the token', async () => {
         const plane = await start();
         expect((await fetch(`${plane.url}/status`)).status).toBe(401);
