@@ -173,3 +173,13 @@ test('packaged controller serves authenticated status', async () => {
   assert.equal(status.roomId, 'package-test');
   assert.deepEqual(status.queue, []);
 });
+
+test('launcher readiness self-test exposes a bounded request budget', () => {
+  const result = spawnSync(launcher, ['--self-test-readiness'], { encoding: 'utf8', timeout: 30_000 });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.requestTimeoutWithinBudget, true);
+  assert.equal(report.deadlineExhausted, true);
+  assert.match(readFileSync(path.join(buildCwd, 'Launcher.swift'), 'utf8'), /failControllerStartup[\\s\\S]*controller\?\.terminate\(\)/);
+  assert.equal(report.portConflictMessage, 'Port 4321 is already in use.');
+});

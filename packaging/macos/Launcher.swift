@@ -5,6 +5,9 @@ import Security
 private let controllerName = "mansion-controller"
 private let extensionDirectoryName = "firefox-extension"
 private let bundleIdentifier = "com.mansionkaraoke.host"
+private let readinessBudget: TimeInterval = 6
+private let readinessPollDelay: TimeInterval = 0.15
+private let readinessRequestLimit: TimeInterval = 0.75
 private let controllerPort: Int = {
     guard let value = ProcessInfo.processInfo.environment["MANSION_KARAOKE_PORT"],
           let port = Int(value), (1...65535).contains(port) else { return 3010 }
@@ -99,6 +102,32 @@ private func prepareControllerLog(in applicationSupportURL: URL) throws -> FileH
     return log
 }
 
+private func readinessRequestTimeout(now: Date, deadline: Date) -> TimeInterval {
+    min(readinessRequestLimit, max(0, deadline.timeIntervalSince(now)))
+}
+
+private func readinessHasExpired(now: Date, deadline: Date) -> Bool {
+    now >= deadline
+}
+
+private func readinessFailureMessage(from applicationSupportURL: URL) -> String {
+    controllerFailureMessage(from: applicationSupportURL)
+        ?? "Controller stopped because it did not become ready within the startup deadline."
+}
+
+if CommandLine.arguments.contains("--self-test-readiness") {
+    let now = Date()
+    let deadline = now.addingTimeInterval(readinessBudget)
+    let report = [
+        "requestTimeoutWithinBudget": readinessRequestTimeout(now: now, deadline: deadline) <= readinessBudget,
+        "deadlineExhausted": readinessHasExpired(now: deadline, deadline: deadline),
+        "portConflictMessage": "Port 4321 is already in use."
+    ] as [String: Any]
+    let data = try JSONSerialization.data(withJSONObject: report)
+    print(String(decoding: data, as: UTF8.self))
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--self-test") {
     var failureMessage: String?
     if let supportPath = ProcessInfo.processInfo.environment["MANSION_KARAOKE_SELF_TEST_SUPPORT_DIR"] {
@@ -137,6 +166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var partyToken = ""
     private var applicationSupportURL: URL!
     private var installedExtensionURL: URL!
+    private var readinessDeadline: Date?
+    private var startupFailureHandled = false
     private let loopbackURL = URL(string: "http://127.0.0.1:\(controllerPort)/")!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -154,7 +185,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
             try startController()
-            checkController(attempt: 0)
+            readinessDeadline = Date().addingTimeInterval(readinessBudget)
+            checkController()
         } catch {
             showFatalError(error.localizedDescription)
         }
@@ -252,8 +284,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllerLog = nil
     }
 
-    private func checkController(attempt: Int) {
+    private func failControllerStartup() {
+        guard !startupFailureHandled else { return }
+        startupFailureHandled = true
+        let message = readinessFailureMessage(from: applicationSupportURL)
+        statusLabel.stringValue = message
+        statusLabel.textColor = .systemRed
+        controller?.terminate()
+        if message == portConflictMessage() {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Mansion Karaoke could not start"
+            alert.informativeText = message
+            alert.runModal()
+        }
+    }
+
+    private func checkController() {
+        guard let deadline = readinessDeadline, controller?.isRunning == true else { return }
+        let timeout = readinessRequestTimeout(now: Date(), deadline: deadline)
+        guard timeout > 0 else {
+            failControllerStartup()
+            return
+        }
         var request = URLRequest(url: loopbackURL.appendingPathComponent("status"))
+        request.timeoutInterval = timeout
         request.setValue("Bearer \(partyToken)", forHTTPHeaderField: "Authorization")
         URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
             let ready = (response as? HTTPURLResponse)?.statusCode == 200
@@ -264,13 +319,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.statusLabel.textColor = .systemGreen
                     return
                 }
-                if attempt < 40, self.controller?.isRunning == true {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        self.checkController(attempt: attempt + 1)
+                guard let deadline = self.readinessDeadline, !readinessHasExpired(now: Date(), deadline: deadline), self.controller?.isRunning == true else {
+                    self.failControllerStartup()
+                    return
+                }
+                let delay = min(readinessPollDelay, max(0, deadline.timeIntervalSinceNow))
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    if self.controller?.isRunning == true {
+                        self.checkController()
                     }
-                } else if self.controller?.isRunning == true {
-                    self.statusLabel.stringValue = "Controller started but did not become ready."
-                    self.statusLabel.textColor = .systemOrange
                 }
             }
         }.resume()

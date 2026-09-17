@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +11,7 @@ const workflow = readFileSync(path.join(root, '.github/workflows/macos-app.yml')
 const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
 const friendSetup = readFileSync(path.join(root, 'FRIEND_SETUP.md'), 'utf8');
 const launcher = readFileSync(path.join(root, 'packaging/macos/Launcher.swift'), 'utf8');
+const buildScript = path.join(root, 'packaging/macos/build-app.sh');
 
 test('workflow installs the root and standalone Firefox dependency graphs', () => {
   assert.match(workflow, /run: \|\n\s+bun install --no-save\n\s+bun install --cwd players\/firefox-extension --no-save/);
@@ -47,4 +50,32 @@ test('port conflicts have actionable launcher copy', () => {
   assert.ok(launcher.includes('Port \\(controllerPort) is already in use'));
   assert.match(launcher, /Quit the other controller/);
   assert.match(launcher, /controllerFailureMessage\(from:/);
+});
+
+test('build script validates an explicitly selected pinned Bun', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'mansion-bun-'));
+  const bun = path.join(dir, 'bun');
+  writeFileSync(bun, '#!/bin/sh\nprintf "1.3.13\\n"\n');
+  chmodSync(bun, 0o755);
+  try {
+    const result = spawnSync('/bin/bash', [buildScript, '--check-bun'], {
+      env: { ...process.env, BUN_BIN: bun }, encoding: 'utf8'
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Using Bun:/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('build script rejects a Bun version other than the release pin', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'mansion-bun-'));
+  const bun = path.join(dir, 'bun');
+  writeFileSync(bun, '#!/bin/sh\nprintf "1.4.2\\n"\n');
+  chmodSync(bun, 0o755);
+  try {
+    const result = spawnSync('/bin/bash', [buildScript, '--check-bun'], {
+      env: { ...process.env, BUN_BIN: bun }, encoding: 'utf8'
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /requires Bun 1\.3\.13/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
