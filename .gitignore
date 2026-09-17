@@ -10,3 +10,4 @@ node_modules
 
 apps/control-plane/dist/
 packaging/macos/release/
+players/firefox-extension/bun.lock
