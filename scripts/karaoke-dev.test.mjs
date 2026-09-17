@@ -55,7 +55,9 @@ test('prepare installs from the repository without rewriting its lockfile', () =
   mkdirSync(bin, { recursive: true });
   for (const command of ['bun', 'node']) {
     const target = path.join(bin, command);
-    writeFileSync(target, `#!/bin/sh\nprintf '%s %s\\n' '${command}' "$*" >> "$COMMAND_LOG"\n`);
+    writeFileSync(target, command === 'bun'
+      ? `#!/bin/sh\nif [ "$1" = "--version" ]; then printf '1.3.13\\n'; exit 0; fi\nprintf '%s %s\\n' '${command}' "$*" >> "$COMMAND_LOG"\n`
+      : `#!/bin/sh\nprintf '%s %s\\n' '${command}' "$*" >> "$COMMAND_LOG"\n`);
     chmodSync(target, 0o755);
   }
 
@@ -63,6 +65,7 @@ test('prepare installs from the repository without rewriting its lockfile', () =
   assert.equal(result.status, 0, result.stderr);
   const commands = readFileSync(log, 'utf8');
   assert.match(commands, /^bun install --no-save$/m);
+  assert.match(commands, /^bun install --cwd players\/firefox-extension --no-save$/m);
 });
 
 test('start prints a controller URL using the configured port', () => {

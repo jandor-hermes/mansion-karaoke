@@ -6,7 +6,7 @@ A local-network karaoke host for house parties. A controller runs on one compute
 
 There are two ways to run Mansion Karaoke:
 
-- **Mac app (private beta)** — a self-contained macOS app that hosts a party without a developer checkout. A trusted-friend Windows x64 package and other host apps are planned but not yet published.
+- **Mac app (private beta)** — a self-contained macOS app that hosts a party without a developer checkout. It requires macOS 13.0 or newer (the app build target). A trusted-friend Windows x64 package and other host apps are planned but not yet published.
 - **Run from source (macOS or Linux)** — the developer workflow below builds and runs the controller and Firefox player from a clone. This is the path for contributors and for those running on Linux today.
 
 ## Quick start (Mac app)
@@ -15,6 +15,7 @@ Host requirements:
 
 - macOS
 - Firefox
+- An internet connection (YouTube search and playback are online services)
 
 1. Download the Apple Silicon or Intel ZIP from [GitHub Releases](https://github.com/jandor-hermes/mansion-karaoke/releases).
 2. Move **Mansion Karaoke.app** to Applications.
@@ -28,7 +29,7 @@ The source workflow is a single shell script that runs unmodified in Bash on bot
 
 Prerequisites:
 
-- **Bun** 1.3.x (the repo's locked version) — install from <https://bun.sh>. The launcher looks for it in `~/.bun/bin`.
+- **Bun** exactly **1.3.13** — install from <https://bun.sh>. The launcher looks for it in `~/.bun/bin` and rejects other versions.
 - **Node.js** 18 or newer (the launcher tests use `node --test`, and the control plane and Firefox extension build with plain `node`).
 - **openssl** — used to generate the random party token on first run.
 - **Firefox** — required to load the player extension and actually play songs.
@@ -94,9 +95,12 @@ The controller binds to the local network during a session. Anyone with the disp
 ## Current limitations
 
 - The temporary Firefox extension must be loaded again after Firefox restarts.
+- The temporary extension must also be reloaded after an app update, because the generated extension files change.
 - Queue state is in memory and is cleared when the controller stops.
+- YouTube may show ads or videos that are unavailable, restricted, or removed. Use **Skip** to recover to the next queue item; retrying may require searching for another upload.
 - App updates are manual downloads from GitHub Releases.
-- The private-beta app is ad-hoc signed, not Developer ID signed, and not notarized, so it requires a one-time Gatekeeper override.
+- Firefox is the supported player browser; install it from the [official Firefox download page](https://www.mozilla.org/firefox/new/).
+- The private beta is honest developer-preview software: it is ad-hoc signed, not Developer ID signed, and not notarized, so it requires a one-time Gatekeeper override.
 - YouTube page changes may require compatibility maintenance.
 
 ## Project layout

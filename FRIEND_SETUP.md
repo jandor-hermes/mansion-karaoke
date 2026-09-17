@@ -1,6 +1,8 @@
 # Mansion Karaoke: Friend Setup Guide
 
-This is the simplest way to host Mansion Karaoke from a Mac. The app contains the controller and Firefox player files, so the host does **not** need Git, Node.js, Bun, Docker, or a developer checkout. Guests need only a phone on the same Wi-Fi.
+This is the simplest way to host Mansion Karaoke from a Mac. This is a private beta, not a finished consumer release. The app contains the controller and Firefox player files, so the host does **not** need Git, Node.js, Bun, Docker, or a developer checkout. Guests need only a phone on the same Wi-Fi and the host needs internet access for YouTube.
+
+Host requirement: macOS 13.0 or newer. Install [Firefox from Mozilla](https://www.mozilla.org/firefox/new/) before the party.
 
 ## Download the Mac app
 
@@ -40,13 +42,19 @@ Firefox opens or focuses the dedicated karaoke display. A join QR code appears b
 
 > Firefox removes temporary add-ons whenever Firefox quits. Repeat this section after restarting Firefox. The app keeps the same eight-character party token between launches.
 
+Repeat the Firefox setup after installing a newer app update too: the temporary extension files are replaced.
+
 ## Start the party
 
 1. Put Firefox on the TV, directly or over HDMI/AirPlay.
 2. Have guests join the same Wi-Fi and scan the QR code.
 3. Guests enter a display name, search for karaoke videos, and add them to the shared queue.
 
+Before guests arrive, rehearse two songs on a real phone on the same Wi-Fi. Test pause, resume, and Skip; confirm TV audio and fullscreen; and keep the Mac plugged in with its lid open, awake, and set not to sleep.
+
 Anyone with the QR code or party token can control the session. Use it only on a trusted local network. Quit **Mansion Karaoke** to stop the local controller; the current queue is cleared when it stops.
+
+YouTube may play ads, or a queued video may be unavailable or restricted. Press **Skip** to recover to the next song; search for another upload if needed.
 
 ## Update later
 

@@ -6,6 +6,7 @@ if [[ -d "$HOME/.bun/bin" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUN_VERSION="1.3.13"
 STATE_DIR="$ROOT/.karaoke"
 TOKEN_FILE="$STATE_DIR/party-token"
 SERVER="$ROOT/apps/control-plane/dist/apps/control-plane/src/server.js"
@@ -46,7 +47,13 @@ prepare() {
   require_command bun
   require_command node
   cd "$ROOT"
+  actual_bun="$(bun --version)"
+  if [[ "$actual_bun" != "$BUN_VERSION" ]]; then
+    printf 'Bun %s is required (found %s).\n' "$BUN_VERSION" "$actual_bun" >&2
+    exit 1
+  fi
   bun install --no-save
+  bun install --cwd players/firefox-extension --no-save
   bun run firefox:build
   bun run firefox:verify
   node apps/control-plane/scripts/build.mjs
