@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const extensionDir = path.resolve(new URL('..', import.meta.url).pathname);
+const extensionDir = fileURLToPath(new URL('..', import.meta.url));
 const rootDir = path.resolve(extensionDir, '..', '..');
 const require = createRequire(import.meta.url);
 let build;
