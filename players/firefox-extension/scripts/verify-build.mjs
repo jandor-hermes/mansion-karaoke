@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const extensionDir = path.resolve(new URL('..', import.meta.url).pathname);
+const extensionDir = fileURLToPath(new URL('..', import.meta.url));
 const distDir = path.join(extensionDir, 'dist');
 const manifest = JSON.parse(fs.readFileSync(path.join(distDir, 'manifest.json'), 'utf8'));
 
