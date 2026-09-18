@@ -15,9 +15,9 @@ Build a Mac-hosted karaoke app for a TV connected by HDMI. Guests join from phon
 
 ## Current assets and constraints
 
-- Upstream checkout: `/Users/hermes/Documents/karaoke/vkara`
+- Upstream checkout: `/Users/hermes/Projects/karaoke/vkara`
 - Existing checkout has local diagnostic changes and must be preserved.
-- Existing player POC: `/Users/hermes/Documents/karaoke/firefox-player-poc`
+- Existing player POC: `/Users/hermes/Projects/karaoke/firefox-player-poc`
 - Host: Apple Silicon Mac, Firefox, HDMI TV, LAN guests.
 - vkara search uses YouTube Innertube through the `youtubei` package and currently returns useful results without a Data API key.
 - vkara is MIT licensed. Preserve copyright/license notices in copied substantial portions.
