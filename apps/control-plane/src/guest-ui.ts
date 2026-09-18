@@ -173,10 +173,10 @@ export function guestPage(roomId: string): string {
   const setStatus = (id,message,error) => { const node=$(id); node.textContent=message||''; node.classList.toggle('error',!!error); };
   const showToast = (message,error) => { clearTimeout(toastTimer); const node=$('toast'); node.textContent=message; node.classList.toggle('error',!!error); node.hidden=false; toastTimer=setTimeout(()=>{node.hidden=true;},2600); };
   const showGate = (message,error) => {$('controller-shell').hidden=true;$('auth-gate').hidden=false;$('name-input').value=guestName;$('token-input').value=token||'';setStatus('token-status',message||'',!!error);setTimeout(()=>$(guestName?'token-input':'name-input').focus(),0);};
-  const forgetToken = (message) => { token=null; try{localStorage.removeItem(tokenKey);localStorage.removeItem(legacyTokenKey);}catch{} showGate(message,true); };
+  const forgetToken = (message) => { token=null; stopWorker(); try{localStorage.removeItem(tokenKey);localStorage.removeItem(legacyTokenKey);}catch{} showGate(message,true); };
   const disconnectedMessage = () => 'Controller disconnected — retrying automatically. Check that the Firefox Karaoke Player is running and reconnect it from the extension.';
   const showDisconnected = () => { if(token&&guestName){$('auth-gate').hidden=true;$('controller-shell').hidden=false;$('guest-name').textContent=guestName;} setStatus('control-status',disconnectedMessage(),true); };
-  const validateToken = async () => { try { const response=await api('/status'); if(response.status===401){forgetToken('That party token was not accepted.');return false;} if(!response.ok)throw new Error('Could not connect.'); $('auth-gate').hidden=true; $('controller-shell').hidden=false;$('guest-name').textContent=guestName;try{localStorage.setItem(tokenKey,token);localStorage.setItem(nameKey,guestName);localStorage.removeItem(legacyTokenKey);}catch{} renderStatus(await response.json()); return true; } catch(error){ showDisconnected(); return false; } };
+  const validateToken = async () => { try { const response=await api('/status'); if(response.status===401){forgetToken('That party token was not accepted.');return false;} if(!response.ok)throw new Error('Could not connect.'); $('auth-gate').hidden=true; $('controller-shell').hidden=false;$('guest-name').textContent=guestName;try{localStorage.setItem(tokenKey,token);localStorage.setItem(nameKey,guestName);localStorage.removeItem(legacyTokenKey);}catch{} handleStatus(await response.json()); if(startWorker())stopFallbackPolling();else startFallbackPolling(); return true; } catch(error){ showDisconnected(); return false; } };
   $('token-form').addEventListener('submit',async(event)=>{event.preventDefault();const enteredName=$('name-input').value.trim();const value=$('token-input').value.trim();if(!enteredName){setStatus('token-status','Enter your name.',true);return;}if(!value){setStatus('token-status','Enter a party token.',true);return;}guestName=enteredName;token=value;setStatus('token-status','Joining…');$('token-save').disabled=true;await validateToken();$('token-save').disabled=false;});
   $('change-token').addEventListener('click',()=>showGate('Update your name or party token.',false));
 
@@ -215,14 +215,72 @@ export function guestPage(roomId: string): string {
   const historyCard = (item) => '<div class="history-item"><span class="meta"><span class="title">'+esc(item.title||item.videoId)+'</span><span class="sub">'+itemDetails(item)+'</span></span><span class="sub">'+(item.reason==='ended'?'finished':item.reason)+'</span></div>';
   let lastStatus='', lastQueue='', lastHistory='';
   const renderStatus = (status) => {const current=status.current;const playback=status.playback||{};const fresh=typeof playback.lastSeen==='number'&&Date.now()-playback.lastSeen<=10000;const state=playback.state||'idle';currentItemId=current&&current.itemId||null;volume=typeof playback.volume==='number'?playback.volume:volume;observedPlayback=fresh?state:'unavailable';let nowDetail='Search for a song';if(current){if(!fresh)nowDetail='Firefox player disconnected — open the Karaoke Player extension to reconnect.';else if(state==='loading')nowDetail='Extension connected — playback not observed yet. Check the TV or use Skip.';else if(state==='playing')nowDetail='Now playing · '+itemDetails(current);else if(state==='paused')nowDetail='Paused · '+itemDetails(current);else if(state==='ended')nowDetail='Song ended — waiting for the next song.';else if(state==='error')nowDetail='Player error: '+(playback.error||'Check Firefox Karaoke Player, reconnect, or use Skip.');else nowDetail='Waiting for the player…';}$('now-playing').innerHTML=current?'<b>'+esc(current.title||current.videoId)+'</b><span>'+esc(nowDetail)+'</span>':'<b>Nothing playing</b><span>'+esc(nowDetail)+'</span>';const toggle=$('control-toggle');if(fresh&&state==='playing'){toggle.disabled=false;toggle.textContent='⏸';toggle.setAttribute('aria-label','Pause playback');}else if(fresh&&state==='paused'){toggle.disabled=false;toggle.textContent='▶';toggle.setAttribute('aria-label','Resume playback');}else{toggle.disabled=true;toggle.textContent='…';toggle.setAttribute('aria-label','Playback state unavailable');}if(!fresh)setStatus('control-status',disconnectedMessage(),true);else if(state==='error')setStatus('control-status','Player error: '+(playback.error||'Check Firefox Karaoke Player, reconnect, or use Skip.')+' Try Skip to continue.',true);else if(state==='loading')setStatus('control-status','Extension connected; playback not observed yet. Check the TV or use Skip.',true);else setStatus('control-status','Player connected. Playback is '+state+'.',false);const queue=status.queue||[];const history=status.history||[];queuedItems=queue;queueLength=queue.length;const queueKey=JSON.stringify(queue);if(queueKey!==lastQueue){lastQueue=queueKey;$('queue-list').innerHTML=queue.length?queue.map((item,index)=>queueCard(item,index,queue.length)).join(''):'<div class="queue-empty">The queue is empty. Add a song from Search.</div>';}$('clear-queue').hidden=!queue.length;const historyKey=JSON.stringify(history);if(historyKey!==lastHistory){lastHistory=historyKey;$('history-list').innerHTML=history.length?history.map(historyCard).join(''):'<div class="queue-empty">Songs you finish or skip will appear here.</div>';}$('history-count').textContent=history.length+(history.length===1?' song':' songs');$('queue-count').textContent=queue.length+(queue.length===1?' song':' songs');$('queue-badge').textContent=String(queue.length);$('queue-badge').hidden=!queue.length;};
-  async function refresh(){if(!token)return;try{const response=await api('/status');if(response.status===401)return forgetToken('Your party token expired.');if(!response.ok)throw new Error('Status unavailable');const status=await response.json();const next=JSON.stringify({c:status.current,q:status.queue,h:status.history,p:status.playback,f:typeof status.playback?.lastSeen==='number'&&Date.now()-status.playback.lastSeen<=10000});if(next===lastStatus)return;lastStatus=next;renderStatus(status);}catch{showDisconnected();}}
+  async function refresh(){if(!token||refreshInFlight)return;refreshInFlight=true;try{const response=await api('/status');if(response.status===401)return forgetToken('Your party token expired.');if(!response.ok)throw new Error('Status unavailable');handleStatus(await response.json());}catch{showDisconnected();}finally{refreshInFlight=false;}}
+  const handleStatus=(status)=>{const next=JSON.stringify({c:status.current,q:status.queue,h:status.history,p:status.playback,f:typeof status.playback?.lastSeen==='number'&&Date.now()-status.playback.lastSeen<=10000});if(next===lastStatus)return;lastStatus=next;renderStatus(status);};
+  let refreshInFlight=false;
   $('queue-list').addEventListener('click',async(event)=>{const button=event.target.closest('button');if(!button||button.disabled)return;const itemId=button.dataset.itemId;if(!itemId)return;if(button.classList.contains('queue-play')){selectedQueueItem=queuedItems.find(item=>item.itemId===itemId)||null;if(!selectedQueueItem)return;$('queue-play-confirm-title').textContent='Interrupt and play “'+(selectedQueueItem.title||selectedQueueItem.videoId)+'” now?';$('queue-play-confirm').showModal();return;}button.disabled=true;let path,body,message;if(button.classList.contains('queue-remove')){path='/queue/remove';body={itemId};message='Removed from queue';}else{path='/queue/move';const delta=button.classList.contains('queue-up')?-1:1;body={itemId,position:Number(button.dataset.position)+delta};message='Queue order updated';}await control(path,body,message,'queue-status',button);});
   const control = async(path,body,message='Command requested',statusId='control-status',source)=>{if(source)source.disabled=true;try{const response=await api(path,{method:'POST',body:body?JSON.stringify(body):undefined});if(response.status===401)return forgetToken('Your party token expired.');if(response.status===409&&path==='/control/skip'){showToast('Song changed — refreshed current song',true);lastStatus='';await refresh();setStatus(statusId,'Song changed — refreshed the current song.',true);return;}if(!response.ok)throw new Error();setStatus(statusId,message+' — waiting for player confirmation.');showToast(message+' — waiting for TV');lastStatus='';await refresh();}catch{setStatus(statusId,'Command failed — playback state unchanged.',true);showToast('Command failed',true);}finally{if(source)source.disabled=false;}};
   $('control-toggle').addEventListener('click',(event)=>{const button=event.currentTarget;if(observedPlayback==='playing')control('/control/pause',null,'Pause requested','control-status',button);else if(observedPlayback==='paused')control('/control/resume',null,'Resume requested','control-status',button);else setStatus('control-status','Playback state is unavailable. Check Firefox Karaoke Player and reconnect.',true);});
   $('control-skip').addEventListener('click',(event)=>{if(!currentItemId){setStatus('control-status','No displayed song to skip. Refreshing status.',true);refresh();return;}control('/control/skip',{expectedItemId:currentItemId},'Skip requested','control-status',event.currentTarget);});$('volume-down').addEventListener('click',(event)=>{const next=Math.max(0,Number((volume-.25).toFixed(2)));control('/control/volume',{volume:next},'Volume requested: '+Math.round(next*100)+'%','control-status',event.currentTarget);});$('volume-up').addEventListener('click',(event)=>{const next=Math.min(1,Number((volume+.25).toFixed(2)));control('/control/volume',{volume:next},'Volume requested: '+Math.round(next*100)+'%','control-status',event.currentTarget);});$('control-fullscreen').addEventListener('click',(event)=>control('/control/fullscreen',null,'Fullscreen requested','control-status',event.currentTarget));
+  let statusWorker=null, fallbackTimer=0;
+  const startWorker = () => { if(typeof Worker!=='function'||!token)return false; try{ if(!statusWorker){ statusWorker=new Worker('/guest-worker.js'); statusWorker.onmessage=(event)=>{const data=(event&&event.data)||{};if(data.type==='status')handleStatus(data.status);else if(data.type==='unauthorized')forgetToken('Your party token expired.');else if(data.type==='offline')showDisconnected();else if(data.type==='resync')setStatus('control-status','Reconnecting — updating the queue…',false);}; } statusWorker.postMessage({type:'start',token:token}); return true; }catch{ statusWorker=null; return false; } };
+  const stopWorker = () => { if(statusWorker){try{statusWorker.terminate();}catch{} statusWorker=null; } };
+  const startFallbackPolling = () => { if(!fallbackTimer)fallbackTimer=setInterval(refresh,2500); };
+  const stopFallbackPolling = () => { if(fallbackTimer){clearTimeout(fallbackTimer);fallbackTimer=0;} };
+  const resyncNow = () => { if(!token)return; if(statusWorker){try{statusWorker.postMessage({type:'resync'});}catch{}} refresh(); };
+  const wakeTarget = (typeof window==='object'&&window&&typeof window.addEventListener==='function')?window:document;
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')resyncNow();});
+  wakeTarget.addEventListener('online',resyncNow);
+  wakeTarget.addEventListener('pageshow',(event)=>{if(event&&event.persisted)resyncNow();});
   if(token&&guestName)validateToken(); else showGate('',false);
-  setInterval(refresh,2500);
+  startFallbackPolling();
 })();
 </script>
 </body></html>`;
+}
+
+/**
+ * Dedicated Web Worker for the guest page. Phones throttle page timers to
+ * roughly once a minute while backgrounded, but worker timers keep running,
+ * so this worker keeps polling /status and pushes fresh queue and connection
+ * state to the page. It also detects long timer gaps (phone slept) and tells
+ * the page to show a reconnecting notice before the next poll lands.
+ * Service Workers are not an option here: guests join over plain LAN HTTP,
+ * which browsers refuse to register service workers on.
+ */
+export function guestWorker(): string {
+    return `(() => {
+  'use strict';
+  let token = null, running = false, stopped = false, timer = 0, lastTick = 0, delay = 2500;
+  const post = (message) => self.postMessage(message);
+  async function poll() {
+    if (!token) return;
+    try {
+      const response = await fetch('/status', { headers: { Authorization: 'Bearer ' + token } });
+      if (response.status === 401) { post({ type: 'unauthorized' }); return; }
+      if (!response.ok) throw new Error('status unavailable');
+      post({ type: 'status', status: await response.json() });
+      delay = 2500;
+    } catch { post({ type: 'offline' }); delay = Math.min(delay * 2, 15000); }
+  }
+  async function loop() {
+    while (!stopped) {
+      const now = Date.now();
+      if (lastTick && now - lastTick > 15000) post({ type: 'resync' });
+      lastTick = now;
+      await poll();
+      await new Promise((resolve) => { timer = setTimeout(resolve, delay); });
+    }
+  }
+  self.onmessage = (event) => {
+    const data = (event && event.data) || {};
+    if (data.type === 'start' && data.token) {
+      token = data.token;
+      if (stopped) { stopped = false; running = false; }
+      if (!running) { running = true; void loop(); }
+    } else if (data.type === 'resync') { void poll(); }
+    else if (data.type === 'stop') { stopped = true; clearTimeout(timer); token = null; running = false; }
+  };
+})();
+`;
 }

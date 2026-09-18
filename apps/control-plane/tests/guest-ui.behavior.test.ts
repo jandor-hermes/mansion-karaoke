@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { guestPage } from '../src/guest-ui.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { guestPage, guestWorker } from '../src/guest-ui.js';
 
 type Listener = (event: any) => any;
 
@@ -81,7 +81,7 @@ function deferred<T>() {
 
 async function settle() { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); }
 
-function boot(options: { stored?: Record<string, string>, fetch: (path: string, init?: RequestInit) => Promise<any> }) {
+function boot(options: { stored?: Record<string, string>, fetch: (path: string, init?: RequestInit) => Promise<any>, worker?: any }) {
     const nodes = new Map<string, FakeNode>();
     const ids = [...guestPage('party-room').matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
     for (const id of ids) {
@@ -92,22 +92,39 @@ function boot(options: { stored?: Record<string, string>, fetch: (path: string, 
     }
     const storage = new Map(Object.entries(options.stored || {}));
     const timers: Array<() => void> = [];
+    const documentListeners = new Map<string, Listener[]>();
     const document = {
         getElementById: (id: string) => nodes.get(id) || null,
         querySelectorAll: (_selector: string) => [],
-        addEventListener: () => {},
+        visibilityState: 'visible',
+        addEventListener: (type: string, listener: Listener) => {
+            const listeners = documentListeners.get(type) || [];
+            listeners.push(listener);
+            documentListeners.set(type, listeners);
+        },
         createElement: (tag: string) => { const node = new FakeNode(); node.tagName = tag; node.className = tag === 'button' ? 'button' : ''; return node; },
     };
     const html = guestPage('party-room');
     const script = html.match(/<script>\n([\s\S]*?)\n<\/script>/)?.[1];
     if (!script) throw new Error('guest page has no script');
-    const run = new Function('document', 'localStorage', 'location', 'history', 'fetch', 'setTimeout', 'clearTimeout', 'setInterval', 'URLSearchParams', 'globalThis', script);
+    const run = new Function('document', 'localStorage', 'location', 'history', 'fetch', 'setTimeout', 'clearTimeout', 'setInterval', 'URLSearchParams', 'globalThis', 'Worker', script);
     run(document, {
         getItem: (key: string) => storage.get(key) || null,
         setItem: (key: string, value: string) => storage.set(key, String(value)),
         removeItem: (key: string) => storage.delete(key),
-    }, { hash: '', pathname: '/', search: '' }, { replaceState() {} }, options.fetch, (callback: () => void) => { timers.push(callback); return timers.length; }, () => {}, (callback: () => void) => { timers.push(callback); return timers.length; }, URLSearchParams, { crypto: undefined });
-    return { nodes, storage, timers };
+    }, { hash: '', pathname: '/', search: '' }, { replaceState() {} }, options.fetch, (callback: () => void) => { timers.push(callback); return timers.length; }, () => {}, (callback: () => void) => { timers.push(callback); return timers.length; }, URLSearchParams, { crypto: undefined }, options.worker);
+    return { nodes, storage, timers, documentListeners };
+}
+
+class FakeWorker {
+    url: string;
+    onmessage: Listener | null = null;
+    messages: any[] = [];
+    terminated = false;
+    constructor(url: string) { this.url = url; }
+    postMessage(data: any) { this.messages.push(data); }
+    terminate() { this.terminated = true; }
+    receive(data: any) { if (this.onmessage) this.onmessage({ data }); }
 }
 
 describe('guest UI resilience', () => {
@@ -330,5 +347,153 @@ describe('guest UI resilience', () => {
         expect(skipBody).toEqual({ expectedItemId: 'displayed-item' });
         expect(skip.disabled).toBe(false);
         expect(page.nodes.get('control-status')!.textContent).toMatch(/song changed|stale/i);
+    });
+});
+
+describe('guest status worker wiring', () => {
+    const liveStatus = () => ({ current: { itemId: 'now', videoId: 'song', title: 'Current Song' }, queue: [], history: [], playback: { state: 'playing', error: null, lastSeen: Date.now(), volume: .75 } });
+
+    function bootWithWorker(fetch: (path: string, init?: any) => Promise<any>) {
+        const workers: FakeWorker[] = [];
+        const workerFactory = class extends FakeWorker {
+            constructor(url: string) { super(url); workers.push(this); }
+        };
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch,
+            worker: workerFactory,
+        });
+        return { page, workers };
+    }
+
+    it('boots the status worker after a successful join and renders its pushed statuses', async () => {
+        const { page, workers } = bootWithWorker(async () => response(200, liveStatus()));
+        await settle();
+        expect(workers).toHaveLength(1);
+        expect(workers[0].url).toBe('/guest-worker.js');
+        expect(workers[0].messages[0]).toEqual({ type: 'start', token: 'saved-token' });
+
+        workers[0].receive({ type: 'status', status: { ...liveStatus(), queue: [{ itemId: 'q1', videoId: 'queued', title: 'Queued Song' }] } });
+        expect(page.nodes.get('queue-list')!.innerHTML).toContain('Queued Song');
+        expect(page.nodes.get('queue-count')!.textContent).toBe('1 song');
+    });
+
+    it('resyncs immediately when the phone becomes visible again', async () => {
+        const calls: string[] = [];
+        const { page, workers } = bootWithWorker(async (path) => { calls.push(path); return response(200, liveStatus()); });
+        await settle();
+        const visibility = page.documentListeners.get('visibilitychange') ?? [];
+        expect(visibility.length).toBeGreaterThan(0);
+        workers[0].messages.length = 0;
+        calls.length = 0;
+
+        visibility[0]!({ visibilityState: 'visible' });
+        await settle();
+        expect(workers[0].messages).toContainEqual({ type: 'resync' });
+        expect(calls).toContain('/status');
+    });
+
+    it('terminates the worker and clears the token when the worker reports the session expired', async () => {
+        const { page, workers } = bootWithWorker(async () => response(200, liveStatus()));
+        await settle();
+        workers[0].receive({ type: 'unauthorized' });
+        await settle();
+        expect(workers[0].terminated).toBe(true);
+        expect(page.nodes.get('auth-gate')!.hidden).toBe(false);
+        expect(page.storage.has('karaoke-token-party-room')).toBe(false);
+    });
+
+    it('shows the reconnecting notice when the worker detects a sleep gap', async () => {
+        const { page, workers } = bootWithWorker(async () => response(200, liveStatus()));
+        await settle();
+        workers[0].receive({ type: 'resync' });
+        expect(page.nodes.get('control-status')!.textContent).toMatch(/reconnecting|updating/i);
+    });
+});
+
+describe('guest worker script', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    function bootWorkerScript(fetchImpl: (path: string, init?: any) => Promise<any>) {
+        const posted: any[] = [];
+        const self: any = { postMessage: (message: any) => posted.push(message), onmessage: null };
+        const run = new Function('self', 'fetch', 'setTimeout', 'clearTimeout', guestWorker());
+        run(self, fetchImpl, setTimeout, clearTimeout);
+        return { posted, receive: (data: any) => self.onmessage({ data }) };
+    }
+
+    it('polls /status with the bearer token on start and on each tick, forwarding the payload', async () => {
+        vi.useFakeTimers();
+        const requests: Array<{ path: string, authorization?: string }> = [];
+        const worker = bootWorkerScript(async (path, init) => {
+            requests.push({ path, authorization: init?.headers?.Authorization });
+            return response(200, { current: null, queue: [], history: [], playback: {} });
+        });
+        worker.receive({ type: 'start', token: 'party' });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(requests).toEqual([{ path: '/status', authorization: 'Bearer party' }]);
+        expect(worker.posted[0]).toEqual(expect.objectContaining({ type: 'status' }));
+
+        await vi.advanceTimersByTimeAsync(2500);
+        expect(requests).toHaveLength(2);
+    });
+
+    it('announces a resync after the phone sleeps through a long timer gap', async () => {
+        let now = 1_000_000;
+        const realNow = Date.now;
+        Date.now = () => now;
+        try {
+            const posted: any[] = [];
+            const timers: Array<() => void> = [];
+            const self: any = { postMessage: (message: any) => posted.push(message), onmessage: null };
+            const run = new Function('self', 'fetch', 'setTimeout', 'clearTimeout', guestWorker());
+            run(self, async () => response(200, { current: null, queue: [], history: [], playback: {} }),
+                (callback: () => void) => { timers.push(callback); return timers.length; }, () => {});
+            self.onmessage({ data: { type: 'start', token: 'party' } });
+            for (let i = 0; i < 10; i += 1) await Promise.resolve();
+            expect(posted.some((message) => message.type === 'resync')).toBe(false);
+
+            // The phone slept: real time jumped far past the worker's tick cadence.
+            now += 60_000;
+            (timers[0] as unknown as () => void)();
+            for (let i = 0; i < 10; i += 1) await Promise.resolve();
+            expect(posted.some((message) => message.type === 'resync')).toBe(true);
+            expect(posted.some((message) => message.type === 'status')).toBe(true);
+        } finally {
+            Date.now = realNow;
+        }
+    });
+
+    it('reports offline on failures and keeps retrying', async () => {
+        vi.useFakeTimers();
+        let failures = 2;
+        const worker = bootWorkerScript(async () => {
+            if (failures-- > 0) throw new Error('network down');
+            return response(200, { current: null, queue: [], history: [], playback: {} });
+        });
+        worker.receive({ type: 'start', token: 'party' });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(worker.posted[0]).toEqual({ type: 'offline' });
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(worker.posted.some((message) => message.type === 'status')).toBe(true);
+    });
+
+    it('reports unauthorized instead of offline on a 401', async () => {
+        vi.useFakeTimers();
+        const worker = bootWorkerScript(async () => response(401, { error: 'unauthorized' }));
+        worker.receive({ type: 'start', token: 'expired' });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(worker.posted).toEqual([{ type: 'unauthorized' }]);
+    });
+
+    it('stops polling after a stop message', async () => {
+        vi.useFakeTimers();
+        let polls = 0;
+        const worker = bootWorkerScript(async () => { polls += 1; return response(200, { current: null, queue: [], history: [], playback: {} }); });
+        worker.receive({ type: 'start', token: 'party' });
+        await vi.advanceTimersByTimeAsync(0);
+        worker.receive({ type: 'stop' });
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(polls).toBe(1);
     });
 });
