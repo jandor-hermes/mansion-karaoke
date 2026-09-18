@@ -3,7 +3,7 @@ import { networkInterfaces } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { itemIdSchema, videoIdSchema, playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src/index.js';
 import { createUnavailableSearchAdapter, type SearchAdapter } from './search.js';
-import { guestPage } from './guest-ui.js';
+import { guestPage, guestWorker } from './guest-ui.js';
 
 export type ControlPlane = { url: string; bind: string; listen(port: number): Promise<void>; close(): Promise<void> };
 export type QueueItem = {
@@ -159,9 +159,15 @@ export function createControlPlane(options: Options): ControlPlane {
             response.setHeader('Content-Type', 'text/html; charset=utf-8');
             return response.end(guestPage(options.roomId));
         }
+        const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
+        if (request.method === 'GET' && urlObject.pathname === '/guest-worker.js') {
+            response.statusCode = 200;
+            response.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            response.setHeader('Cache-Control', 'no-cache');
+            return response.end(guestWorker());
+        }
         if (request.headers.authorization !== `Bearer ${options.token}`) return send(response, 401, { error: 'unauthorized' });
         refreshLoadingDeadline();
-        const urlObject = new URL(request.url ?? '/', url || 'http://127.0.0.1');
         try {
             if (request.method === 'GET' && urlObject.pathname === '/join-info') return send(response, 200, { joinUrl: joinUrl() });
             if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, instanceId, current, queue, history, sequence, playback, activeCommand, desiredPaused });

@@ -110,6 +110,24 @@ describe('guest UI page', () => {
         expect(html).toContain('localStorage');            // token storage
         expect(html).toContain('party-room');              // room name in header
         expect(html).toContain('viewport');                // phone-friendly
+        expect(html).toContain('new Worker(\'/guest-worker.js\')'); // status worker
+        expect(html).toContain("addEventListener('visibilitychange'"); // wake resync
+        expect(html).toContain("addEventListener('online'");
+        expect(html).toContain("addEventListener('pageshow'");
+    });
+
+    it('serves the status worker at GET /guest-worker.js without a token', async () => {
+        const plane = await start();
+        const response = await fetch(`${plane.url}/guest-worker.js`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toContain('javascript');
+        const script = await response.text();
+        expect(script).toContain("self.postMessage");
+        expect(script).toContain("'/status'");
+        expect(script).toContain("Authorization: 'Bearer ' + token");
+        expect(script).toContain("{ type: 'resync' }");
+        expect(script).toContain("{ type: 'unauthorized' }");
+        expect(script).not.toContain('test-token');        // no token baked into the script
     });
 
     it('gives mobile queue metadata a full-width row above accessible actions', async () => {
