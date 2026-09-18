@@ -9,7 +9,7 @@
     },
     "homepage": "https://github.com/jandor-hermes/mansion-karaoke",
     "bugs": "https://github.com/jandor-hermes/mansion-karaoke/issues",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "workspaces": [
         "apps/*",
         "packages/*"
