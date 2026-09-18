@@ -42,7 +42,6 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
     // locally on every timeupdate so it appears exactly when configured.
     let overlaySettings: OverlaySettings | null = null;
     let overlayInfo: OverlayInfo = { current: null, next: null, playing: false, remainingSeconds: null };
-    let overlayNearEndAnnounced = false;
     const renderOverlay = () => {
         const element = video();
         if (!element) return;
@@ -180,7 +179,6 @@ export function installYouTubeContentScript(send: (event: unknown) => void = eve
             if (!message.info || typeof message.info !== 'object' || !message.settings || typeof message.settings !== 'object') return;
             overlayInfo = message.info as OverlayInfo;
             overlaySettings = message.settings as OverlaySettings;
-            overlayNearEndAnnounced = false;
             renderOverlay();
             return;
         }

@@ -6135,7 +6135,6 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
     const adShowing = () => !!document.querySelector(".ad-showing, .ad-interrupting");
     let overlaySettings = null;
     let overlayInfo = { current: null, next: null, playing: false, remainingSeconds: null };
-    let overlayNearEndAnnounced = false;
     const renderOverlay = () => {
       const element = video();
       if (!element) return;
@@ -6293,7 +6292,6 @@ html.${PRESENTATION_CLASS}, html.${PRESENTATION_CLASS} body { background: #000 !
         if (!message.info || typeof message.info !== "object" || !message.settings || typeof message.settings !== "object") return;
         overlayInfo = message.info;
         overlaySettings = message.settings;
-        overlayNearEndAnnounced = false;
         renderOverlay();
         return;
       }
