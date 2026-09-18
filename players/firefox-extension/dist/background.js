@@ -4579,13 +4579,26 @@
       }
     });
     browserApi.storage.onChanged?.addListener((changes) => {
-      if ("baseUrl" in changes || "token" in changes || "overlay" in changes) void browserApi.storage.local.get(["baseUrl", "token", "overlay"]).then((value) => {
+      if ("baseUrl" in changes || "token" in changes || "overlay" in changes || "experiments" in changes) void browserApi.storage.local.get(["baseUrl", "token", "overlay", "experiments"]).then((value) => {
         const config = parseStoredConfig(value);
         if (config.baseUrl !== activeConfig.baseUrl || config.token !== activeConfig.token) configure(config);
-        else if (JSON.stringify(config.overlay) !== JSON.stringify(overlaySettings)) {
-          overlaySettings = config.overlay;
-          lastOverlayKey = "";
-          void poll();
+        else {
+          if (JSON.stringify(config.experiments) !== JSON.stringify(activeConfig.experiments)) {
+            activeConfig = config;
+            router = new CommandRouter(
+              browserApi.tabs,
+              (id, message) => browserApi.tabs.sendMessage(id, message),
+              windows,
+              8e3,
+              config.experiments.hostControlsFullscreen
+            );
+            log("experiment toggled", { hostControlsFullscreen: config.experiments.hostControlsFullscreen });
+          }
+          if (JSON.stringify(config.overlay) !== JSON.stringify(overlaySettings)) {
+            overlaySettings = config.overlay;
+            lastOverlayKey = "";
+            void poll();
+          }
         }
       });
     });
