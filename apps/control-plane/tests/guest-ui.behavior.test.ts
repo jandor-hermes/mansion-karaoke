@@ -187,7 +187,7 @@ describe('guest UI resilience', () => {
     });
 
     it('distinguishes extension connection from loading playback and gives Skip guidance for player errors', async () => {
-        const status = { current: { itemId: 'now', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'loading', error: null, lastSeen: Date.now(), volume: .75 } };
+        const status = { current: { itemId: 'now', videoId: 'song', title: 'Song' }, queue: [], history: [], playback: { state: 'loading', error: null as string | null, lastSeen: Date.now(), volume: .75 } };
         const page = boot({
             stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
             fetch: async () => response(200, status),
