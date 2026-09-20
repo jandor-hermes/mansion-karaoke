@@ -219,6 +219,22 @@ describe('autosuggestions', () => {
         expect(await json(response)).toEqual({ suggestions: Array.from({ length: 8 }, (_, index) => `queen karaoke ${index}`) });
         expect(queries).toEqual(['queen karaoke']);
     });
+    it('leaves /suggest untouched: no karaoke rewrite on queries without the keyword', async () => {
+        const queries: string[] = [];
+        const plane = createControlPlane({
+            token: 'test-token',
+            roomId: 'room-1',
+            suggest: { suggest: async (query: string) => { queries.push(query); return [`${query} karaoke`]; } },
+        });
+        await plane.listen(0);
+        planes.push(plane);
+
+        const response = await request(plane, '/suggest?q=sweet%20caroline');
+
+        expect(response.status).toBe(200);
+        expect(await json(response)).toEqual({ suggestions: ['sweet caroline karaoke'] });
+        expect(queries).toEqual(['sweet caroline']);
+    });
 });
 
 describe('queue history and direct selection', () => {

@@ -176,7 +176,14 @@ export function createControlPlane(options: Options): ControlPlane {
                 if (typeof value.query !== 'string' || value.query.trim().length === 0) return send(response, 400, { error: 'query required' });
                 if (value.continuation !== undefined && typeof value.continuation !== 'string') return send(response, 400, { error: 'continuation must be a string' });
                 try {
-                    return send(response, 200, await search.search(value.query, value.continuation as string | undefined));
+                    // Party-friction item 1: append "karaoke" server-side on submit so
+                    // every client gets karaoke-ranked results; skip when the user's
+                    // trimmed query already contains the token (case-insensitive).
+                    const trimmedQuery = value.query.trim();
+                    const query = trimmedQuery.toLowerCase().includes('karaoke')
+                        ? value.query
+                        : `${trimmedQuery} karaoke`;
+                    return send(response, 200, await search.search(query, value.continuation as string | undefined));
                 } catch (error) {
                     if (error instanceof Error && error.message === 'search_not_configured') return send(response, 503, { error: 'search_not_configured' });
                     return send(response, 502, { error: 'search_upstream_failed' });

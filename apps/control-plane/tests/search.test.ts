@@ -37,8 +37,38 @@ describe('control-plane search adapter boundary', () => {
             received = [query, continuation]; return { items: [], continuation: null };
         }));
         expect((await request(plane, '/search', { method: 'POST', body: JSON.stringify({ query: ' song ', continuation: 'token' }) })).status).toBe(200);
-        expect(received).toEqual([' song ', 'token']);
+        expect(received).toEqual(['song karaoke', 'token']);
         expect((await request(plane, '/search', { method: 'POST', body: JSON.stringify({ query: '   ' }) })).status).toBe(400);
+    });
+
+    it('appends " karaoke" to a query that lacks the keyword', async () => {
+        const calls: string[] = [];
+        const plane = await start(createSearchAdapter(async (query) => {
+            calls.push(query); return { items: [], continuation: null };
+        }));
+        const response = await request(plane, '/search', { method: 'POST', body: JSON.stringify({ query: 'sweet caroline' }) });
+        expect(response.status).toBe(200);
+        expect(calls).toEqual(['sweet caroline karaoke']);
+    });
+
+    it('passes a query already containing karaoke through unmodified, preserving case and whitespace', async () => {
+        const calls: string[] = [];
+        const plane = await start(createSearchAdapter(async (query) => {
+            calls.push(query); return { items: [], continuation: null };
+        }));
+        const response = await request(plane, '/search', { method: 'POST', body: JSON.stringify({ query: 'Sweet Caroline KARAOKE' }) });
+        expect(response.status).toBe(200);
+        expect(calls).toEqual(['Sweet Caroline KARAOKE']);
+    });
+
+    it('detects a mixed-case karaoke substring and skips the rewrite', async () => {
+        const calls: string[] = [];
+        const plane = await start(createSearchAdapter(async (query) => {
+            calls.push(query); return { items: [], continuation: null };
+        }));
+        const response = await request(plane, '/search', { method: 'POST', body: JSON.stringify({ query: 'Bohemian Rhapsody Karaoke Version' }) });
+        expect(response.status).toBe(200);
+        expect(calls).toEqual(['Bohemian Rhapsody Karaoke Version']);
     });
 
     it('reports an explicit integration gate when no adapter is configured', async () => {
