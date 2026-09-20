@@ -10,6 +10,10 @@ export type BootstrapOptions = {
   roomId: string;
   search?: SearchAdapter;
   youtubeiClient?: InnertubeClientLike;
+  /** Startup default for Auto-KJ (KARAOKE_AUTO_KJ=off passes false). */
+  autoKjEnabled?: boolean;
+  /** Persisted-state file for the Auto-KJ host toggle. */
+  autoKjStateFile?: string;
 };
 
 export const YOUTUBEI_CONFIGURATION_ERROR =

@@ -7,7 +7,8 @@ const videoIds: Record<string, string> = {
 };
 const canonicalVideoId = (value: string) => videoIds[value] ?? value;
 const item = (videoId: string, itemId = `item-${videoId}`) => ({ videoId: canonicalVideoId(videoId), itemId });
-
+// /status and queue-mutation responses now carry the Auto-KJ placement field.
+const queued = (name: string, placement: 'auto' | 'manual' = 'auto') => ({ ...item(name), placement });
 let planes: ControlPlane[] = [];
 afterEach(async () => { await Promise.all(planes.splice(0).map((plane) => plane.close())); });
 
@@ -85,7 +86,7 @@ describe('local control-plane vertical slice', () => {
         const requestItem = { ...rich, clientOnly: 'discard me' };
         expect((await request(plane, '/queue', { method: 'POST', body: JSON.stringify(requestItem) })).status).toBe(201);
         const status = await json(await request(plane, '/status'));
-        expect(status.current).toEqual(rich);
+        expect(status.current).toEqual({ ...rich, placement: 'auto' });
         const play = (await json(await request(plane, '/command?after=0'))).command;
         expect(play).toMatchObject({ type: 'play', itemId: rich.itemId, videoId: rich.videoId });
         expect(play).not.toHaveProperty('title');
@@ -158,7 +159,7 @@ describe('phone song actions', () => {
 
         expect(response.status).toBe(201);
         expect(await json(response)).toMatchObject({ current: item('first'), queue: [nextItem, item('second')] });
-        expect((await json(await request(plane, '/status'))).queue).toEqual([nextItem, item('second')]);
+        expect((await json(await request(plane, '/status'))).queue).toEqual([{ ...nextItem, placement: 'manual' }, queued('second')]);
     });
     it('starts a play-next item immediately while idle', async () => {
         const plane = await start();
@@ -264,8 +265,8 @@ describe('queue history and direct selection', () => {
         const response = await request(plane, '/queue/play', { method: 'POST', body: JSON.stringify({ itemId: 'item-third' }) });
         expect(response.status).toBe(200);
         const body = await json(response);
-        expect(body.current).toEqual(item('third'));
-        expect(body.queue).toEqual([item('second'), item('fourth')]);
+        expect(body.current).toEqual(queued('third'));
+        expect(body.queue).toEqual([queued('second'), queued('fourth')]);
         expect(body.history[0]).toMatchObject({ ...item('first'), reason: 'replaced' });
 
         const interrupt = await json(await request(plane, '/command?after=1'));
@@ -293,7 +294,7 @@ describe('queue clearing', () => {
         expect(response.status).toBe(200);
         expect(await json(response)).toEqual({ queue: [] });
         const status = await json(await request(plane, '/status'));
-        expect(status.current).toEqual(item('first'));
+        expect(status.current).toEqual(queued('first'));
         expect(status.queue).toEqual([]);
         expect(status.history).toEqual([]);
     });
@@ -314,9 +315,9 @@ describe('queue removal and reordering', () => {
         const removal = await request(plane, '/queue/remove', { method: 'POST', body: JSON.stringify({ itemId: 'item-second' }) });
         expect(removal.status).toBe(200);
         const body = await json(removal);
-        expect(body.queue).toEqual([item('third')]);
+        expect(body.queue).toEqual([queued('third')]);
         expect((await json(await request(plane, '/status'))).current.videoId).toBe(videoIds.first);
-        expect((await json(await request(plane, '/status'))).queue).toEqual([item('third')]);
+        expect((await json(await request(plane, '/status'))).queue).toEqual([queued('third')]);
     });
 
     it('consistently rejects removing a non-existent item', async () => {
@@ -352,16 +353,16 @@ describe('queue removal and reordering', () => {
 
         const move = await request(plane, '/queue/move', { method: 'POST', body: JSON.stringify({ itemId: 'item-fourth', position: 0 }) });
         expect(move.status).toBe(200);
-        expect((await json(move)).queue).toEqual([item('fourth'), item('second'), item('third')]);
+        expect((await json(move)).queue).toEqual([queued('fourth', 'manual'), queued('second'), queued('third')]);
 
         const tooLow = await request(plane, '/queue/move', { method: 'POST', body: JSON.stringify({ itemId: 'item-second', position: -5 }) });
         expect(tooLow.status).toBe(200);
-        expect((await json(tooLow)).queue).toEqual([item('second'), item('fourth'), item('third')]);
+        expect((await json(tooLow)).queue).toEqual([queued('second', 'manual'), queued('fourth', 'manual'), queued('third')]);
 
         const tooHigh = await request(plane, '/queue/move', { method: 'POST', body: JSON.stringify({ itemId: 'item-third', position: 99 }) });
         expect(tooHigh.status).toBe(200);
-        expect((await json(tooHigh)).queue).toEqual([item('second'), item('fourth'), item('third')]);
-        expect((await json(await request(plane, '/status'))).queue).toEqual([item('second'), item('fourth'), item('third')]);
+        expect((await json(tooHigh)).queue).toEqual([queued('second', 'manual'), queued('fourth', 'manual'), queued('third', 'manual')]);
+        expect((await json(await request(plane, '/status'))).queue).toEqual([queued('second', 'manual'), queued('fourth', 'manual'), queued('third', 'manual')]);
     });
 
     it('rejects moving the current item or a non-existent item', async () => {

@@ -4,6 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { itemIdSchema, videoIdSchema, playbackCommandSchema, playbackEventSchema, type PlaybackCommand, type PlaybackEvent } from '../../../packages/playback-protocol/src/index.js';
 import { createUnavailableSearchAdapter, type SearchAdapter } from './search.js';
 import { guestPage, guestWorker } from './guest-ui.js';
+import { chooseInsertionIndex, chooseNextIndex, normalizeSinger, type Placement, type SchedulerState, type SchedulingItem } from './auto-kj.js';
+import { homedir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 
 export type ControlPlane = { url: string; bind: string; listen(port: number): Promise<void>; close(): Promise<void> };
 export type QueueItem = {
@@ -16,7 +20,23 @@ export type QueueItem = {
     requestedBy?: string;
 };
 export type SuggestionAdapter = { suggest(query: string): Promise<string[]> };
-type Options = { token: string; roomId: string; search?: SearchAdapter; suggest?: SuggestionAdapter; bind?: string; now?: () => number };
+type Options = {
+    token: string; roomId: string; search?: SearchAdapter; suggest?: SuggestionAdapter; bind?: string; now?: () => number;
+    /** Startup default for Auto-KJ (KARAOKE_AUTO_KJ=off passes false). */
+    autoKjEnabled?: boolean;
+    /** Persisted host-setting file for the Auto-KJ runtime toggle; omit to disable persistence. */
+    autoKjStateFile?: string;
+};
+
+/** Default persisted-state path for the Auto-KJ host toggle (owner-owned home directory). */
+export function defaultAutoKjStateFile(env: Record<string, string | undefined>): string | undefined {
+    if (env.KARAOKE_AUTO_KJ_STATE_FILE === '') return undefined;
+    return env.KARAOKE_AUTO_KJ_STATE_FILE ?? join(homedir(), '.karaoke', 'auto-kj.json');
+}
+
+export function autoKjStartupDefault(env: Record<string, string | undefined>): boolean {
+    return (env.KARAOKE_AUTO_KJ ?? '').trim().toLowerCase() !== 'off';
+}
 
 const queueMetadataFields = ['title', 'channel', 'duration', 'thumbnail', 'requestedBy'] as const;
 
@@ -96,6 +116,43 @@ export function createControlPlane(options: Options): ControlPlane {
     let url = '';
     const bind = options.bind ?? resolveBindAddress(process.env);
     const now = options.now ?? Date.now;
+    // Auto-KJ scheduling state (see AUTO-KJ-PLAN.md). Ephemeral with the queue.
+    const autoKjStateFile = options.autoKjStateFile;
+    let autoKjEnabled = options.autoKjEnabled ?? true;
+    const singerState: SchedulerState = { lastTurnBySinger: new Map<string, number>() };
+    const scheduling = new Map<string, { singerKey: string; arrivalSequence: number; placement: Placement }>();
+    let arrivalCounter = 0;
+    let turnCounter = 0;
+    const schedule = (item: QueueItem, placement: Placement) => {
+        scheduling.set(item.itemId, { singerKey: normalizeSinger(item.requestedBy), arrivalSequence: ++arrivalCounter, placement });
+    };
+    const markPlacement = (itemId: string, placement: Placement) => {
+        const entry = scheduling.get(itemId);
+        if (entry) entry.placement = placement;
+    };
+    const asSchedulingItems = (list: readonly QueueItem[]): SchedulingItem[] => list.map((item) => {
+        const entry = scheduling.get(item.itemId);
+        return { itemId: item.itemId, singerKey: entry?.singerKey ?? normalizeSinger(item.requestedBy), arrivalSequence: entry?.arrivalSequence ?? 0, placement: entry?.placement ?? 'auto' };
+    });
+    const serializeItem = (item: QueueItem) => {
+        const entry = scheduling.get(item.itemId);
+        return { ...item, placement: entry?.placement ?? 'auto' };
+    };
+    const readAutoKjState = async () => {
+        if (!autoKjStateFile) return;
+        try {
+            const value = JSON.parse(await readFile(autoKjStateFile, 'utf8')) as { enabled?: unknown };
+            if (typeof value.enabled === 'boolean') autoKjEnabled = value.enabled;
+        } catch { /* missing or unreadable state falls back to the startup default */ }
+    };
+    const persistAutoKjState = async () => {
+        if (!autoKjStateFile) return;
+        try {
+            await mkdir(dirname(autoKjStateFile), { recursive: true });
+            await writeFile(autoKjStateFile, JSON.stringify({ enabled: autoKjEnabled }), { mode: 0o600 });
+        } catch { /* non-fatal: the runtime toggle stays effective for this session */ }
+    };
+    void readAutoKjState();
     const refreshLoadingDeadline = () => {
         if (loadingDeadline && activeCommand?.commandId === loadingDeadline.commandId && playback.state === 'loading' && now() >= loadingDeadline.at) {
             playback.state = 'error';
@@ -121,9 +178,17 @@ export function createControlPlane(options: Options): ControlPlane {
     const commandFor = (type: PlaybackCommand['type'], extra: Record<string, unknown> = {}): PlaybackCommand => playbackCommandSchema.parse({
         ...extra, type, commandId: randomUUID(), roomId: options.roomId, issuedAt: Date.now(),
     });
-    const startNext = () => {
+    const startNext = (previousSingerKey: string | null = null) => {
+        if (autoKjEnabled) {
+            const guardIndex = chooseNextIndex(asSchedulingItems(queue), previousSingerKey, singerState);
+            if (guardIndex > 0) queue.unshift(queue.splice(guardIndex, 1)[0]);
+        }
         current = queue.shift() ?? null;
-        if (current) issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
+        if (current) {
+            const singerKey = normalizeSinger(current.requestedBy);
+            singerState.lastTurnBySinger.set(singerKey, ++turnCounter);
+            issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
+        }
         else activeCommand = null;
     };
     const hasItemId = (itemId: string) => current?.itemId === itemId || queue.some((item) => item.itemId === itemId);
@@ -131,7 +196,8 @@ export function createControlPlane(options: Options): ControlPlane {
         history.unshift({ ...item, completedAt, reason });
         if (history.length > 100) history.length = 100;
     };
-    const skip = () => { if (current) { issue(commandFor('skip')); remember(current, 'skipped'); current = null; playback.state = 'idle'; playback.error = null; startNext(); } };
+    const singerOfCurrent = () => (current ? normalizeSinger(current.requestedBy) : null);
+    const skip = () => { if (current) { issue(commandFor('skip')); remember(current, 'skipped'); const previousSinger = singerOfCurrent(); current = null; playback.state = 'idle'; playback.error = null; startNext(previousSinger); } };
     const body = async (request: IncomingMessage) => {
         let data = ''; for await (const chunk of request) data += chunk;
         return data ? JSON.parse(data) : {};
@@ -170,7 +236,7 @@ export function createControlPlane(options: Options): ControlPlane {
         refreshLoadingDeadline();
         try {
             if (request.method === 'GET' && urlObject.pathname === '/join-info') return send(response, 200, { joinUrl: joinUrl() });
-            if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, instanceId, current, queue, history, sequence, playback, activeCommand, desiredPaused });
+            if (request.method === 'GET' && urlObject.pathname === '/status') return send(response, 200, { roomId: options.roomId, instanceId, current: current && serializeItem(current), queue: queue.map(serializeItem), history, sequence, playback, activeCommand, desiredPaused, autoKj: { enabled: autoKjEnabled } });
             if (request.method === 'POST' && urlObject.pathname === '/search') {
                 const value = await body(request) as { query?: unknown; continuation?: unknown };
                 if (typeof value.query !== 'string' || value.query.trim().length === 0) return send(response, 400, { error: 'query required' });
@@ -217,25 +283,33 @@ export function createControlPlane(options: Options): ControlPlane {
                 const value = parseQueueItem(await body(request));
                 if (!value) return send(response, 400, { error: 'itemId and videoId required' });
                 if (current?.itemId === value.itemId || queue.some((item) => item.itemId === value.itemId)) return send(response, 200, value);
-                const wasIdle = !current; queue.push(value); if (wasIdle) startNext();
-                return send(response, 201, value);
+                schedule(value, autoKjEnabled ? 'auto' : 'off');
+                const wasIdle = !current;
+                let index = queue.length;
+                if (autoKjEnabled) index = chooseInsertionIndex({ singerKey: normalizeSinger(value.requestedBy), arrivalSequence: scheduling.get(value.itemId)!.arrivalSequence }, asSchedulingItems(queue), singerState);
+                queue.splice(index, 0, value);
+                if (wasIdle) { startNext(); index = 0; }
+                return send(response, 201, { item: serializeItem(value), position: index, placement: autoKjEnabled ? 'auto' : 'off', playing: wasIdle });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/next') {
                 const value = parseQueueItem(await body(request));
                 if (!value) return send(response, 400, { error: 'valid itemId, videoId, and string metadata required' });
-                if (hasItemId(value.itemId)) return send(response, 200, { current, queue });
+                if (hasItemId(value.itemId)) return send(response, 200, { current: current && serializeItem(current), queue: queue.map(serializeItem) });
+                schedule(value, 'manual');
                 queue.unshift(value);
                 if (!current) startNext();
-                return send(response, 201, { current, queue });
+                return send(response, 201, { current: current && serializeItem(current), queue: queue.map(serializeItem) });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/play-now') {
                 const value = parseQueueItem(await body(request));
                 if (!value) return send(response, 400, { error: 'valid itemId, videoId, and string metadata required' });
-                if (hasItemId(value.itemId)) return send(response, 200, { current, queue, history });
+                if (hasItemId(value.itemId)) return send(response, 200, { current: current && serializeItem(current), queue: queue.map(serializeItem), history });
                 if (current) { issue(commandFor('skip')); remember(current, 'replaced'); }
+                schedule(value, 'manual');
                 current = value;
+                singerState.lastTurnBySinger.set(normalizeSinger(current.requestedBy), ++turnCounter);
                 issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
-                return send(response, 201, { current, queue, history });
+                return send(response, 201, { current: serializeItem(current), queue: queue.map(serializeItem), history });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/play') {
                 const value = await body(request) as { itemId?: unknown };
@@ -246,8 +320,9 @@ export function createControlPlane(options: Options): ControlPlane {
                 const [selected] = queue.splice(index, 1);
                 if (current) { issue(commandFor('skip')); remember(current, 'replaced'); }
                 current = selected;
+                singerState.lastTurnBySinger.set(normalizeSinger(current.requestedBy), ++turnCounter);
                 issue(commandFor('play', { itemId: current.itemId, videoId: current.videoId, position: 0 }));
-                return send(response, 200, { current, queue, history });
+                return send(response, 200, { current: serializeItem(current), queue: queue.map(serializeItem), history });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/clear') {
                 queue.length = 0;
@@ -260,7 +335,7 @@ export function createControlPlane(options: Options): ControlPlane {
                 const index = queue.findIndex((item) => item.itemId === value.itemId);
                 if (index === -1) return send(response, 404, { error: 'item not found in queue' });
                 queue.splice(index, 1);
-                return send(response, 200, { queue });
+                return send(response, 200, { queue: queue.map(serializeItem) });
             }
             if (request.method === 'POST' && urlObject.pathname === '/queue/move') {
                 const value = await body(request) as { itemId?: unknown; position?: unknown };
@@ -272,7 +347,8 @@ export function createControlPlane(options: Options): ControlPlane {
                 const target = Math.max(0, Math.min(queue.length - 1, Math.trunc(value.position)));
                 const [moved] = queue.splice(index, 1);
                 queue.splice(target, 0, moved);
-                return send(response, 200, { queue });
+                markPlacement(moved.itemId, 'manual');
+                return send(response, 200, { queue: queue.map(serializeItem) });
             }
             if (request.method === 'POST' && urlObject.pathname === '/events') {
                 const event = playbackEventSchema.parse(await body(request)) as PlaybackEvent;
@@ -287,8 +363,18 @@ export function createControlPlane(options: Options): ControlPlane {
                 if (event.type !== 'ready') playback.state = event.type;
                 if (event.type === 'error') { playback.error = event.message; loadingDeadline = null; }
                 else if (event.type === 'playing' || event.type === 'paused') { playback.error = null; loadingDeadline = null; }
-                if (event.type === 'ended') { remember(current, 'ended', event.timestamp); current = null; startNext(); }
+                if (event.type === 'ended') { remember(current, 'ended', event.timestamp); const previousSinger = singerOfCurrent(); current = null; startNext(previousSinger); }
                 return send(response, 204);
+            }
+            if (request.method === 'POST' && urlObject.pathname === '/control/auto-kj') {
+                const value = await body(request) as { enabled?: unknown };
+                if (typeof value.enabled !== 'boolean') return send(response, 400, { error: 'enabled must be a boolean' });
+                if (value.enabled !== autoKjEnabled) {
+                    autoKjEnabled = value.enabled;
+                    await persistAutoKjState();
+                    console.log('[control-plane]', 'auto-kj', autoKjEnabled ? 'enabled' : 'disabled', '(host toggle)');
+                }
+                return send(response, 200, { autoKj: { enabled: autoKjEnabled } });
             }
             if (request.method === 'POST' && urlObject.pathname === '/control/skip') {
                 const value = await body(request);
@@ -312,7 +398,7 @@ export function createControlPlane(options: Options): ControlPlane {
         get url() { return url; },
         get bind() { return bind; },
         listen(port) {
-            return new Promise((resolve, reject) => {
+            return readAutoKjState().then(() => new Promise((resolve, reject) => {
                 server = createServer((request, response) => void handler(request, response));
                 server.once('error', (error) => {
                     server = undefined;
@@ -324,7 +410,7 @@ export function createControlPlane(options: Options): ControlPlane {
                     url = `http://127.0.0.1:${actual}`;
                     resolve();
                 });
-            });
+            }));
         },
         close() { return new Promise((resolve, reject) => { if (!server) return resolve(); server.close((error) => error ? reject(error) : resolve()); }); },
     };
