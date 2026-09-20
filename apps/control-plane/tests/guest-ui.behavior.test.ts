@@ -29,6 +29,7 @@ class FakeNode {
             return enabled;
         },
         add: (...names: string[]) => names.forEach((name) => this.classList.values.add(name)),
+        remove: (...names: string[]) => names.forEach((name) => this.classList.values.delete(name)),
         contains: (name: string) => this.classList.values.has(name),
     };
 
@@ -227,7 +228,7 @@ describe('guest UI resilience', () => {
         await settle();
 
         expect(page.nodes.get('results')!.children[0]?.dataset.videoId).toBe('new-song');
-        expect(page.nodes.get('search-status')!.textContent).toBe('1 results');
+        expect(page.nodes.get('search-status')!.textContent).toBe('1 results — ordered by YouTube relevance');
     });
 
     it('preserves prior useful results when a later search errors', async () => {
@@ -250,6 +251,92 @@ describe('guest UI resilience', () => {
 
         expect(page.nodes.get('results')!.children[0]?.dataset.videoId).toBe('kept-song');
         expect(page.nodes.get('search-status')!.textContent).toMatch(/search failed/i);
+    });
+
+    it('escapes the video id in the action-sheet preview link', async () => {
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path, init) => {
+                if (path === '/status') return response(200, { current: null, queue: [], history: [], playback: {} });
+                if (path === '/search') return response(200, { items: [{ id: 'abc"<script>', title: 'Evil' }] });
+                throw new Error(`unexpected ${path}`);
+            },
+        });
+        await settle();
+        page.nodes.get('karaoke-search')!.value = 'evil';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+
+        page.nodes.get('results')!.children[0]!.querySelector('.result-main')!.dispatch('click');
+        const preview = page.nodes.get('action-preview')!;
+        expect(preview.getAttribute('href')).toBe('https://youtu.be/abc&quot;&lt;script&gt;');
+        expect(page.nodes.get('song-actions')!.hidden).toBe(false);
+        expect(page.nodes.get('song-actions-title')!.textContent).toBe('Evil');
+    });
+
+    it('opens the action sheet with the preview link from a queue card', async () => {
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path) => {
+                if (path === '/status') return response(200, { current: null, queue: [{ itemId: 'q1', videoId: 'queue-vid', title: 'Queued Song', channel: 'Ch', duration: '3:00' }], history: [], playback: {} });
+                throw new Error(`unexpected ${path}`);
+            },
+        });
+        await settle();
+
+        const more = new FakeNode();
+        more.tagName = 'button';
+        more.classList.add('secondary', 'queue-more');
+        more.dataset.itemId = 'q1';
+        page.nodes.get('queue-list')!.dispatch('click', { target: more });
+
+        expect(page.nodes.get('action-preview')!.getAttribute('href')).toBe('https://youtu.be/queue-vid');
+        expect(page.nodes.get('song-actions-title')!.textContent).toBe('Queued Song');
+        expect(page.nodes.get('action-add')!.hidden).toBe(true);
+        expect(page.nodes.get('action-next')!.hidden).toBe(true);
+        expect(page.nodes.get('action-now')!.hidden).toBe(true);
+        expect(page.nodes.get('action-cancel')!.hidden).toBe(false);
+    });
+
+    it('shows the search spinner and marks the results container while a search is in flight', async () => {
+        const search = deferred<any>();
+        const page = boot({
+            stored: { 'karaoke-token-party-room': 'saved-token', 'karaoke-name-party-room': 'Ada' },
+            fetch: async (path) => {
+                if (path === '/status') return response(200, { current: null, queue: [], history: [], playback: {} });
+                return search.promise;
+            },
+        });
+        await settle();
+        page.nodes.get('karaoke-search')!.value = 'song';
+        page.nodes.get('search-form')!.dispatch('submit');
+        await settle();
+
+        expect(page.nodes.get('search-spinner')!.hidden).toBe(false);
+        expect(page.nodes.get('results')!.classList.contains('searching')).toBe(true);
+
+        search.resolve(response(200, { items: [{ id: 'song-id', title: 'Song' }] }));
+        await settle();
+        expect(page.nodes.get('search-spinner')!.hidden).toBe(true);
+        expect(page.nodes.get('results')!.classList.contains('searching')).toBe(false);
+    });
+
+    it('shows labeled recent-search suggestions when the empty search input is focused', async () => {
+        const page = boot({
+            stored: {
+                'karaoke-token-party-room': 'saved-token',
+                'karaoke-name-party-room': 'Ada',
+                'karaoke-recent-searches': JSON.stringify(['sweet caroline', 'bohemian rhapsody']),
+            },
+            fetch: async () => response(200, { current: null, queue: [], history: [], playback: {} }),
+        });
+        await settle();
+
+        page.nodes.get('karaoke-search')!.dispatch('focus');
+        const html = page.nodes.get('search-suggestions')!.innerHTML;
+        expect(html).toContain('Suggestions');
+        expect(html).toContain('sweet caroline');
+        expect(html).toContain('bohemian rhapsody');
     });
 
     it('keeps tokens for server errors but clears them for an explicit 401', async () => {
