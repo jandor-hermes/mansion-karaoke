@@ -135,7 +135,7 @@ describe('guest UI page', () => {
         const html = await (await fetch(`${plane.url}/`)).text();
 
         expect(html).toContain('.queued { display:grid; grid-template-columns:2rem minmax(0,1fr);');
-        expect(html).toContain('.queue-actions { grid-column:2; display:grid; grid-template-columns:repeat(4,minmax(44px,1fr));');
+        expect(html).toContain('.queue-actions { grid-column:2; display:grid; grid-template-columns:repeat(5,minmax(44px,1fr));');
         expect(html).toContain('.queue-actions button { width:100%; min-width:44px; min-height:44px;');
         expect(html).toContain('.queued .title { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }');
         expect(html).toContain('class="sub queue-source"');
@@ -146,6 +146,22 @@ describe('guest UI page', () => {
         expect(html).toContain('queue-up');
         expect(html).toContain('queue-down');
         expect(html).toContain('queue-remove');
+    });
+
+    it('exposes the YouTube preview link, wrapping result rows, and search affordances', async () => {
+        const plane = await start();
+        const html = await (await fetch(`${plane.url}/`)).text();
+
+        expect(html).toContain('id="action-preview"');
+        expect(html).toContain('https://youtu.be/');
+        expect(html).toContain('target="_blank" rel="noopener"');
+        expect(html).toContain('.result .title { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }');
+        expect(html).toContain('.result .sub { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; line-height:1.35; }');
+        expect(html).toContain('results — ordered by YouTube relevance');
+        expect(html).toContain('id="search-spinner"');
+        expect(html).toContain('.results.searching .quick-add');
+        expect(html).toContain('suggest-label');
+        expect(html).toContain('queue-more');
     });
 
     it('still protects the API behind the token', async () => {
